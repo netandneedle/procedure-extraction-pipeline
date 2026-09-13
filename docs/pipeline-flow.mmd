@@ -1,0 +1,62 @@
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#1d2021',
+  'primaryTextColor':'#ebdbb2',
+  'primaryBorderColor':'#928374',
+  'lineColor':'#a89984',
+  'secondaryColor':'#3c3836',
+  'tertiaryColor':'#504945',
+  'background':'#282828',
+  'fontFamily':'ui-sans-serif, system-ui, sans-serif',
+  'fontSize':'14px'
+}, 'flowchart': {'curve':'basis', 'htmlLabels': true, 'nodeSpacing': 35, 'rankSpacing': 55}}}%%
+flowchart TD
+  %% ===================== Ingestion =====================
+  src[/"Source upload<br/>(PDF / HTML / Markdown)"/]:::io
+  parse["<b>parse_and_validate</b><br/><i>deterministic</i><br/>Docling → parsed_text"]:::det
+  figs["<b>extract_figures</b><br/><i>LLM (vision)</i><br/>diagrams + screenshots → text"]:::llm
+  ents["<b>extract_entities</b><br/><i>LLM</i><br/>actors, tools, malware,<br/>orgs, locations, CVEs<br/>+ is_sequential flag"]:::llm
+
+  %% ===================== Gate 0 =====================
+  g0{{"<b>Gate 0 — Entity Review</b><br/>analyst edits/removes/adds<br/>typed entities"}}:::gate
+
+  %% ===================== Chunking =====================
+  chunk["<b>chunk_behaviors</b><br/><i>LLM</i><br/>atomic procedure chunks<br/>+ source_excerpt + precedes_ids"]:::llm
+  gC{{"<b>Gate 1 — Procedure Review</b><br/>(gate_chunks)<br/>React-Flow canvas:<br/>edit / drop / add / re-sequence"}}:::gate
+
+  %% ===================== Mapping =====================
+  prop["<b>extract_techniques</b><br/><i>LLM C+A+D flow</i><br/>① propose (training memory)<br/>② retrieve (SecureBERT 2.0)<br/>③ pick + bucket + source_quote"]:::llm
+  draft["<b>draft_procedures</b><br/><i>LLM</i><br/>STIX-ready ProcedureDraft<br/>with objective lead sentence"]:::llm
+  g1{{"<b>Gate 2 — Technique Review</b><br/>(gate_1)<br/>edit techniques,<br/>promote 'possible' picks"}}:::gate
+
+  %% ===================== Assembly =====================
+  norm["<b>normalize</b><br/><i>deterministic</i><br/>dedupe + STIX UUIDs +<br/>relationship preview"]:::det
+  g2{{"<b>Gate 3 — Bundle Review</b><br/>(gate_2)<br/>BundleReviewCanvas:<br/>Flow tab + layered Bundle tab"}}:::gate
+  serial["<b>serialize_stix</b><br/><i>deterministic</i><br/>x-procedure v0.5.0-draft<br/>+ PRECEDES SROs (if sequential)"]:::det
+  vbund["<b>validate_bundle</b><br/><i>deterministic</i><br/>schema + refs + Attack-Flow<br/>check-and-correct"]:::det
+
+  %% ===================== Outputs =====================
+  dist["<b>distribute</b><br/><i>deterministic</i><br/>Neo4j writes<br/>(NEO4J_WRITES_ENABLED)"]:::det
+  fb["<b>synthesize_feedback</b><br/><i>LLM</i><br/>cross-source learning<br/>FeedbackPattern rows"]:::llm
+  out[/"<b>Completed bundle</b><br/>STIX 2.1 JSON + Neo4j graph"/]:::io
+  fail[/"<b>Failed</b><br/>structured corrections<br/>shown in UI"/]:::fail
+
+  %% ===================== Edges =====================
+  src --> parse --> figs --> ents --> g0 --> chunk --> gC
+  gC -- reject --> chunk
+  gC -- approve --> prop
+  prop --> draft --> g1
+  g1 -- reject: bad chunks --> chunk
+  g1 -- reject: wrong technique --> prop
+  g1 -- approve --> norm
+  norm --> g2
+  g2 -- reject --> norm
+  g2 -- approve --> serial --> vbund
+  vbund -- hard-fail --> fail
+  vbund -- ok --> dist --> fb --> out
+
+  %% ===================== Styling =====================
+  classDef det fill:#3c3836,stroke:#83a598,stroke-width:1.5px,color:#ebdbb2
+  classDef llm fill:#3c3836,stroke:#d3869b,stroke-width:1.5px,color:#ebdbb2
+  classDef gate fill:#504945,stroke:#fabd2f,stroke-width:2px,color:#fbf1c7
+  classDef io fill:#1d2021,stroke:#b8bb26,stroke-width:1.5px,color:#ebdbb2
+  classDef fail fill:#1d2021,stroke:#fb4934,stroke-width:1.5px,color:#fb4934

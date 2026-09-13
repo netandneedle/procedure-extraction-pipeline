@@ -1,0 +1,109 @@
+# Every published port is bound to 127.0.0.1 on purpose. This stack has no
+# authentication (see SECURITY.md and the README's "Security"
+# section): the API, Postgres and Neo4j are all open to anyone who can reach
+# the socket. Loopback binding means "anyone" is this machine only. Do not
+# change these to 0.0.0.0 without putting an authenticating reverse proxy in
+# front and changing every password below.
+#
+# Passwords have no defaults. `docker compose up` refuses to start until
+# POSTGRES_PASSWORD and NEO4J_PASSWORD are set in .env — a fresh clone must
+# choose its own, and cannot silently run on well-known dev credentials.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pipeline}
+      POSTGRES_USER: ${POSTGRES_USER:-pipeline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - see .env.example}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pipeline}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env - see .env.example}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_auth__max__failed__attempts: "0"
+      HC_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env - see .env.example}
+    ports:
+      - "127.0.0.1:7474:7474"  # Browser
+      - "127.0.0.1:7687:7687"  # Bolt
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $$HC_PASSWORD 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - see .env.example}@postgres:5432/${POSTGRES_DB:-pipeline}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env - see .env.example}
+      NEO4J_WRITES_ENABLED: ${NEO4J_WRITES_ENABLED:-false}
+      # LLM config, passed through explicitly so the root .env is the one
+      # documented place to set it. Empty defaults mean "unset": the backend
+      # then falls back to backend/.env (bind-mounted) or its own default.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-52428800}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5}
+      LLM_EFFORT: ${LLM_EFFORT:-high}
+      LLM_CACHE_VERSION: ${LLM_CACHE_VERSION:-1}
+      REVIEWER_MODEL: ${REVIEWER_MODEL:-claude-opus-5}
+      REVIEWER_PROVIDER: ${REVIEWER_PROVIDER:-}
+      TECHNIQUE_RETRIEVER: ${TECHNIQUE_RETRIEVER:-}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-procedure-extraction-pipeline}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import httpx; r = httpx.get(\"http://localhost:8000/health\"); r.raise_for_status()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - ./backend:/app
+      # Repo-root data/ exposed read-only so the api can read the ATT&CK
+      # STIX bundle (data/attack/enterprise-attack-19.2.json; the exact file
+      # is settings.attack_stix_path) without baking it into the image.
+      - ./data:/data:ro
+      # HuggingFace cache for SecureBERT 2.0 biencoder used by the embedding
+      # retriever (default mode). Persisted across container rebuilds so the
+      # ~570 MB model isn't re-downloaded every time the api image is rebuilt.
+      - hf-cache:/root/.cache/huggingface
+      # Uploaded source files and the figure stash (settings.upload_dir).
+      # Without a volume these live in the container's own filesystem and
+      # every `docker compose up -d api` after a config change recreates the
+      # container and deletes them — the queue row and checkpoint survive,
+      # the file they point at does not, and Retry parses nothing.
+      - uploads:/tmp/pipeline/uploads
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:
+  neo4jdata:
+  hf-cache:
+  uploads:

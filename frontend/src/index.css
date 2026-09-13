@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/*
+ * Gruvbox Dark theme for Tailwind v4.
+ * Usage: bg-gb-bg0, text-gb-fg1, border-gb-bg1, text-gb-bright-orange, etc.
+ *
+ * Font families: font-ui (IBM Plex Sans), font-data (IBM Plex Mono)
+ */
+
+@theme {
+  /* ── Gruvbox backgrounds ──────────────────────────── */
+  --color-gb-bg0-h: #1d2021;
+  --color-gb-bg0: #282828;
+  --color-gb-bg0-s: #32302f;
+  --color-gb-bg1: #3c3836;
+  --color-gb-bg2: #504945;
+  --color-gb-bg3: #665c54;
+  --color-gb-bg4: #7c6f64;
+
+  /* ── Gruvbox foregrounds ──────────────────────────── */
+  --color-gb-fg0: #fbf1c7;
+  --color-gb-fg1: #ebdbb2;
+  --color-gb-fg2: #d5c4a1;
+  --color-gb-fg3: #bdae93;
+  --color-gb-fg4: #a89984;
+  --color-gb-gray: #928374;
+
+  /* ── Gruvbox accents (regular) ────────────────────── */
+  --color-gb-red: #cc241d;
+  --color-gb-green: #98971a;
+  --color-gb-yellow: #d79921;
+  --color-gb-blue: #458588;
+  --color-gb-purple: #b16286;
+  --color-gb-aqua: #689d6a;
+  --color-gb-orange: #d65d0e;
+
+  /* ── Gruvbox accents (bright) ─────────────────────── */
+  --color-gb-bright-red: #fb4934;
+  --color-gb-bright-green: #b8bb26;
+  --color-gb-bright-yellow: #fabd2f;
+  --color-gb-bright-blue: #83a598;
+  --color-gb-bright-blue-dim: #83a59833;
+  --color-gb-bright-purple: #d3869b;
+  --color-gb-bright-aqua: #8ec07c;
+  --color-gb-bright-orange: #fe8019;
+  --color-gb-bright-orange-dim: #fe801955;
+
+  /* ── Semantic tag backgrounds ─────────────────────── */
+  --color-gb-tag-type-bg: #28404a;
+  --color-gb-tag-channel-bg: #3b2e40;
+  --color-gb-tag-reliability-bg: #2e3a1e;
+  --color-gb-tag-gate-bg: #3d2a1a;
+
+  /* ── Fonts ────────────────────────────────────────── */
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-data: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+}
+
+/* ── Base styles ──────────────────────────────────────── */
+body {
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Slide-over animation ────────────────────────────── */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* ── Fade-in animation ──────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* ── React Flow dark-theme overrides ─────────────────── */
+.react-flow__controls {
+  background: #3c3836;
+  border: 1px solid #504945;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.react-flow__controls-button {
+  background: #3c3836;
+  border-bottom: 1px solid #504945;
+  color: #ebdbb2;
+  fill: #ebdbb2;
+}
+.react-flow__controls-button:hover {
+  background: #504945;
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__minimap {
+  background: #1d2021 !important;
+  border: 1px solid #504945;
+}
+.react-flow__attribution {
+  background: rgba(60, 56, 54, 0.6) !important;
+  color: #928374 !important;
+}
+.react-flow__attribution a {
+  color: #928374 !important;
+}

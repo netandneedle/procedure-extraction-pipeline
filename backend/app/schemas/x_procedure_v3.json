@@ -1,0 +1,246 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://netandneedle.com/stix/x-procedure-v3.schema.json",
+  "title": "x-procedure",
+  "description": "Custom STIX 2.1 extension object representing a discrete, unique instance of adversarial activity. A procedure is the concrete instantiation of one or more ATT&CK techniques as observed in operational reporting. Formalized as the typed tuple P = { AP ≠ ∅, LS ≠ ∅, ⟨C⟩ ≠ ∅ } where AP is the set of Attack Patterns, LS is the set of Log Sources, and ⟨C⟩ is an ordered set of typed Components. Every x-procedure is a distinct observation; multiple procedures may share identical properties but represent separate sightings from different sources or campaigns. Deduplication occurs at query time via x_fingerprint, not at object creation. Schema version: v0.5.0-draft.",
+  "type": "object",
+  "required": [
+    "type",
+    "spec_version",
+    "id",
+    "created",
+    "modified",
+    "name"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "x-procedure",
+      "description": "STIX object type. Always 'x-procedure'."
+    },
+    "spec_version": {
+      "type": "string",
+      "const": "2.1",
+      "description": "STIX specification version."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^x-procedure--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "Unique identifier in format x-procedure--<UUIDv4>. Every instance gets a unique ID, even if properties are identical to another procedure."
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this object was first created."
+    },
+    "modified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this object was last modified."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Procedure name. Convention: [Verb] [Object] via [Tool/Method], optional 'for [Purpose]' or 'on [Platform]'. No actor names — attribution is expressed via graph relationships. Same behavior across different sources SHOULD use the same name; the name describes the behavior, not the observation."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operational narrative. Three-part structure: (1) action summary — what happened and why, (2) mechanism detail — how it works, (3) observation context — where and when observed. Producers SHOULD provide sufficient detail for a responder to recognize the behavior in the field."
+    },
+    "x_procedure_type": {
+      "type": "string",
+      "description": "Category of procedure. Open vocabulary — suggested values: 'reporting' (extracted from external source reporting), 'observed' (from internal cases or incident response), 'hypothetical' (hypothesized procedures not yet observed in the wild). Organizations MAY define additional values."
+    },
+    "x_source_provenance": {
+      "type": "string",
+      "enum": [
+        "prose",
+        "code",
+        "figure",
+        "paraphrased"
+      ],
+      "description": "Source-fidelity category for the evidence backing this procedure — how much interpretation stood between the source document and this object. 'prose': the supporting excerpt is native document text. 'code': the excerpt sits inside a fenced code block, i.e. verbatim with no interpretation. 'figure': the excerpt came from a figure transcribed by a vision model, so it inherits that model's transcription risk. 'paraphrased': no verbatim anchor could be located in the source — the content is still grounded in the source but is not literally quoted from it. Consumers SHOULD weigh 'paraphrased' and 'figure' evidence below 'prose' and 'code'."
+    },
+    "x_chain_label": {
+      "type": "string",
+      "description": "Short human-readable label for the attack chain this procedure belongs to. A single source often documents more than one distinct intrusion (e.g. 'SharePoint primary intrusion' vs 'Veeam intrusion'); the label keeps those chains separable inside one bundle without splitting it. Absent when the source describes a single chain."
+    },
+    "x_chain_root": {
+      "type": "boolean",
+      "description": "True when this procedure begins its attack chain. Chain roots are what the companion attack-flow object lists in start_refs, so a multi-chain bundle surfaces as one flow with several entry points. Absent (rather than false) for non-root procedures."
+    },
+    "x_technique_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^attack-pattern--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "description": "STIX IDs of ATT&CK techniques (attack-pattern objects) this procedure implements. Supports multiple techniques; a single procedure may implement T1059.001 and T1490 simultaneously. Serves as an embedded reference complement to implements-technique SROs. Per the tuple's AP ≠ ∅ constraint and P7 (Catalogue Admission), this property SHOULD be non-empty for any ontologically valid procedure. It may be absent in low-confidence instances where Component decomposition is incomplete, but MUST be populated before the procedure is considered fully characterized."
+    },
+    "x_platforms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Target platforms on which this procedure executes. Open vocabulary — suggested values align with MITRE ATT&CK platform vocabulary: Windows, Linux, macOS, Network, Cloud, ICS, Containers, SaaS, Office Suite, Identity Provider, Google Workspace, Azure AD, Mobile. Organizations MAY use alternative vocabularies such as OpenTide for additional nuance. Per P1 (Platform Specificity), platform scope MUST be encoded on the Procedure entity. This property SHOULD be non-empty for any ontologically valid procedure."
+    },
+    "kill_chain_phases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/kill-chain-phase"
+      },
+      "description": "Kill chain phases this procedure maps to. Uses the standard STIX 2.1 kill-chain-phase type (Section 3.2). For ATT&CK tactics, use kill_chain_name 'mitre-attack' with phase_name matching x_mitre_shortname values (e.g., 'credential-access', 'lateral-movement'). Supports multiple phases and multiple kill chain models on the same object. The embedded property stores phase data on the object for tagging, filtering, and bundle portability; the belongs-to-tactic SRO links to actual Tactic nodes in the graph for traversal queries. These are not redundant — different data types serving different uses (§16)."
+    },
+    "x_vulnerability_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^vulnerability--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "description": "STIX IDs of Vulnerability SDOs this procedure exploits. Present when the procedure's core behavior is exploitation of a specific flaw (e.g., CVE-2023-46604). Serves as an embedded reference complement to exploits SROs."
+    },
+    "x_components_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "STIX IDs of Cyber Observable Objects (SCOs) that constitute this procedure's Component sequence ⟨C⟩ as defined in §5.3. Components are the atomic units of decomposition — each is a discrete, typed element within the adversary action sequence carrying independent analytical meaning. Relevant SCO types include Process (command execution — carries command_line, image_ref for tool binary, parent_ref for process tree, creator_user_ref for executing account), File (payloads, scripts, dropped tools), Windows Registry Key (persistence artifacts), Network Traffic (C2, lateral movement), Directory, User Account, Domain Name, URL, and others. The ordered set of component-of relationships from these SCOs to the parent x-procedure constitutes the procedure's structural decomposition."
+    },
+    "x_log_source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^x-log-source--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "description": "STIX IDs of x-log-source objects associated with this procedure. The denormalized projection of the Log Source inheritance chain: the union of all Log Source IDs reachable via the Component SCO graph (§12.7.2). Maintained for direct lookup and Sigma rule generation. The detects relationships from x-log-source to Component SCOs are authoritative; this property is a convenience reference derived from those relationships. SHOULD be populated for any procedure with a complete or partial Component decomposition."
+    },
+    "first_observed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Earliest known observation of this procedure instance."
+    },
+    "last_observed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Most recent known observation of this procedure instance."
+    },
+    "confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Confidence score reflecting evidence quality and the completeness of the Component decomposition. Scored proportionally to how fully the procedure's Component sequence has been characterized: a procedure with a complete Component set, all Attack Pattern mappings, and all Log Source mappings scores higher than one with partial decomposition. 0 = no confidence, 100 = full certainty. Component incompleteness is an epistemic condition, not an ontological defect — confidence reflects the fidelity of the model's current representation (§11.5)."
+    },
+    "x_source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(identity|report)--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "description": "References to source Identity SDOs or Report identifiers. Critical for distinguishing instances — two procedures with the same name but different x_source_refs represent independent observations from different intelligence sources. Per the multi-source bundle model, each source is modeled as a separate Identity SDO with per-procedure x_source_refs attribution."
+    },
+    "x_fingerprint": {
+      "type": "string",
+      "description": "Behavioral fingerprint computed at ingestion — never manually authored. An open property that allows users to identify, compare, and group procedures. The schema does not prescribe a specific algorithm; producers SHOULD use a structured, deterministic method compatible with their environment and use cases. Approaches include Huffman-coded bitstrings over the ordered Component sequence (supporting equivalence class detection via the anagram property and Levenshtein distance for similarity measurement — see §10.2-10.4), fuzzy hashing, or other fingerprinting schemes. Two procedures sharing the same x_fingerprint value are candidates for deduplication review."
+    },
+    "created_by_ref": {
+      "type": "string",
+      "pattern": "^identity--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "STIX Identity of the analyst or organization that created this object."
+    },
+    "object_marking_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^marking-definition--"
+      },
+      "description": "TLP or other marking definitions applied to this object."
+    },
+    "external_references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external-reference"
+      },
+      "description": "STIX external references (ATT&CK IDs, advisory URLs, CVEs, etc.)."
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Free-form labels for categorization."
+    },
+    "revoked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this object has been revoked. If true, this object SHOULD no longer be used."
+    },
+    "extensions": {
+      "type": "object",
+      "description": "STIX 2.1 extension declarations (§7.3), keyed by extension-definition id. The pipeline always declares the x-procedure extension here; the bundle embeds the matching extension-definition object.",
+      "patternProperties": {
+        "^extension-definition--[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$": {
+          "type": "object",
+          "properties": {
+            "extension_type": {
+              "type": "string",
+              "enum": ["new-sdo"]
+            }
+          },
+          "required": ["extension_type"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external-reference": {
+      "type": "object",
+      "required": [
+        "source_name"
+      ],
+      "properties": {
+        "source_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "hashes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "kill-chain-phase": {
+      "type": "object",
+      "required": [
+        "kill_chain_name",
+        "phase_name"
+      ],
+      "properties": {
+        "kill_chain_name": {
+          "type": "string",
+          "description": "The name of the kill chain. For ATT&CK: 'mitre-attack'. Organizations MAY define additional kill chains (e.g., 'lockheed-martin-cyber-kill-chain', or internal models)."
+        },
+        "phase_name": {
+          "type": "string",
+          "description": "The name of the phase within the kill chain. For ATT&CK, use x_mitre_shortname values: reconnaissance, resource-development, initial-access, execution, persistence, privilege-escalation, defense-evasion, credential-access, discovery, lateral-movement, collection, command-and-control, exfiltration, impact."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

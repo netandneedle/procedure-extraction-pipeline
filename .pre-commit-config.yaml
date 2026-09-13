@@ -1,0 +1,40 @@
+# pre-commit hooks. Run before each commit to catch leaked secrets and
+# common mistakes before they enter git history.
+#
+# Setup (one-time, per clone):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Manual run against the entire repo (useful after pulling new hooks):
+#   pre-commit run --all-files
+#
+# Skip a hook intentionally for one commit (only when you really mean it):
+#   SKIP=gitleaks git commit -m "..."
+
+repos:
+  # gitleaks: blocks commits that contain Anthropic / OpenAI / GitHub /
+  # AWS / private-key patterns. Configured by .gitleaks.toml at the repo
+  # root. This is the single most important hook in this file.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # Standard pre-commit hooks that catch common mistakes before they hit
+  # git history. None of these are CTI-specific; they just keep the diff
+  # readable and prevent self-inflicted footguns (committing 50 MB blobs,
+  # leaving merge conflict markers in code, etc.).
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]  # langgraph configs use !! tags occasionally
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]  # 1 MB ceiling; ATT&CK STIX blobs are gitignored
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]

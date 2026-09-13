@@ -1,0 +1,75 @@
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# LangGraph
+# langchain / langchain-openai / langchain-anthropic are not used:
+# nothing imported them (verified by grep across backend/ and tests/), and
+# they are exactly the kind of unused heavy dependency that produced this
+# repo's past conflicts. langchain-core is still installed — langgraph itself
+# requires it. openai is now declared directly below; it used to arrive only
+# as a transitive dep of langchain-openai.
+langgraph>=0.3.0
+langgraph-checkpoint-postgres>=2.0.0
+
+# LLM providers (direct SDK for tool_use)
+anthropic>=0.42.0
+# Verified against 2.31.0; needs reasoning_effort + max_completion_tokens.
+# Was previously only a transitive dep of langchain-openai.
+openai>=2.0.0
+
+# Database
+asyncpg>=0.30.0
+sqlalchemy[asyncio]>=2.0.0
+# psycopg[binary] pulled in by langgraph-checkpoint-postgres; pinned here to avoid
+# "libpq not found" on fresh installs (requires precompiled wheel, not source build).
+psycopg[binary]>=3.2.0
+
+# Neo4j
+neo4j>=5.27.0
+
+# ATT&CK data access: app.services.attack_data parses the STIX 2.1 bundle
+# at data/attack/enterprise-attack-19.2.json directly via stdlib json. No
+# third-party STIX library is needed for our usage (technique catalogue +
+# procedure-example matcher). Previously used attack-stix-lookup (frozen
+# at v18.1) and then mitreattack-python (which transitively required antlr
+# 4.13, conflicting with docling's omegaconf at 4.9). Direct JSON parse
+# sidesteps both.
+
+# STIX 2.1 schema validation (app.services.stix_schema). Validates every
+# bundle object against the vendored OASIS schemas in app/schemas/stix21/.
+# Deliberately NOT the `stix2` library: it pulls stix2-patterns, which needs
+# antlr4-python3-runtime~=4.13 while docling's omegaconf pins 4.9.3 — the
+# same conflict that got mitreattack-python removed above. jsonschema was
+# already present transitively (via docling-core); declaring it makes the
+# dependency honest.
+jsonschema>=4.20.0
+
+# Parsers
+docling>=2.86.0
+chardet>=5.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+httpx>=0.28.0
+python-multipart>=0.0.18
+websockets>=14.0
+
+# Embedding retriever (app.services.technique_retriever:EmbeddingRetriever).
+# Required for default operation: settings.technique_retriever defaults to
+# "embedding" (semantic edge on lexically-distant
+# cases). To opt out and run pure token_overlap mode, set the env var
+# TECHNIQUE_RETRIEVER=token_overlap — these packages then become unused but
+# remain installed. sentence-transformers import is lazy, so a future build
+# could drop them entirely if you want a leaner image. numpy is declared
+# explicitly so the cosine-similarity matmul has a stable pin.
+# 3.0+ for native ModernBERT support which cisco-ai/SecureBERT2.0-biencoder needs.
+sentence-transformers>=3.0.0
+numpy>=1.26.0
+
+# Test (shipped in-image for R&D parity; split into dev-only deps when the
+# project hardens for deployment).
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

@@ -1,0 +1,21 @@
+Procedure Extraction Pipeline
+Copyright 2026 Sherman Chu
+
+This product includes software developed under the Apache License, Version 2.0
+(see LICENSE).
+
+Third-party data and models this project downloads or references at runtime:
+
+- MITRE ATT&CK(R). ATT&CK is a registered trademark of The MITRE Corporation.
+  The enterprise-attack STIX bundle fetched by scripts/fetch_attack.sh is
+  (c) The MITRE Corporation and used under the ATT&CK Terms of Use:
+  https://attack.mitre.org/resources/legal-and-branding/terms-of-use/
+- STIX(TM) 2.1 is an OASIS Standard. The vendored schema files under
+  backend/app/schemas/ are derived from the OASIS CTI TC repositories.
+- SecureBERT 2.0 biencoder (cisco-ai/SecureBERT2.0-biencoder), Apache 2.0,
+  downloaded on first use by the default technique retriever.
+- Attack Flow is a project of the MITRE Center for Threat-Informed Defense.
+- The sample advisory under data/samples/ is a United States Government work
+  published by CISA and is in the public domain.
+
+Frontend third-party attributions are listed in frontend/THIRD_PARTY.md.
