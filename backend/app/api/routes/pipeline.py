@@ -66,7 +66,7 @@ _REVIEWING_STATUS = {
 # gate that keeps routing BACKWARDS (a rejection still sitting in state, say)
 # re-enters its own interrupt, and the loop would resume it forever — a hot
 # spin writing a DB status update per iteration, with no error and no end.
-# Found while mutation-testing the loop: a gate that stopped honouring its
+# Found while mutation-testing the loop: a gate that stopped honoring its
 # disabled flag hung the test runner outright.
 #
 # Generous headroom over the real gate count so a legitimate rejection cycle
@@ -185,18 +185,18 @@ def cancel_pipeline_task(source_id: uuid.UUID | str) -> bool:
     `StaleDataError: UPDATE ... expected to update 1 row(s); 0 were matched`
     — a traceback that reads like a crash until you trace the thread id.
 
-    Cancelling is safe here precisely because `CancelledError` derives from
+    Canceling is safe here precisely because `CancelledError` derives from
     `BaseException`: `stream_with_sync`'s `except Exception` does not catch
     it, so the run does not get marked failed on its way out, and `_on_done`
-    already returns early for a cancelled task.
+    already returns early for a canceled task.
 
-    Returns True if a task was found and cancelled.
+    Returns True if a task was found and canceled.
     """
     name = f"{_TASK_NAME_PREFIX}{source_id}"
     for task in list(_PIPELINE_TASKS):
         if task.get_name() == name and not task.done():
             task.cancel()
-            logger.info("cancelled in-flight pipeline task for source %s", source_id)
+            logger.info("canceled in-flight pipeline task for source %s", source_id)
             return True
     return False
 
@@ -240,7 +240,7 @@ def _run_counts(values: dict | None) -> dict[str, int | None]:
 # How many times an unattended gate may send work back before a human is
 # asked. One retry: a re-chunk or re-extraction with fresh guidance can
 # genuinely produce a better answer, but a second identical request is a sign
-# the rewind is not the fix, and that is a judgement call worth a person.
+# the rewind is not the fix, and that is a judgment call worth a person.
 _MAX_AUTO_REWIND_PASSES = 1
 
 
@@ -647,7 +647,7 @@ async def start_pipeline(
         else source.gates_enabled
     )
     # Per-gate review mode. Absent on rows predating the column -> all
-    # "review", i.e. today's behaviour.
+    # "review", i.e. today's behavior.
     gate_modes = normalize_gate_modes(getattr(source, "gate_modes", None))
 
     # Build initial state from source record. error, bundle_corrections,

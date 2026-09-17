@@ -13,7 +13,7 @@ DESIGN DECISIONS:
     - All classified sections are stored (for audit), but only
       BEHAVIORAL_NARRATIVE sections go to the chunker.
     - Each chunk maps 1:1 to a procedure. A chunk is one adversarial
-      objective — which may take several actions to fulfil — not a
+      objective — which may take several actions to fulfill — not a
       paragraph from the source.
     - Sequencing data (sequence_index, predecessor_indices, branch/convergence
       points) is assigned during chunking for ATT&CK Flow support.
@@ -81,7 +81,7 @@ async def _fetch_feedback_examples(state) -> str:
     """Past analyst corrections most similar to this source, as demonstrations.
 
     A separate channel from `_fetch_feedback_addendum` on purpose: the rules
-    are LLM-written generalisations and the examples are records, they fail in
+    are LLM-written generalizations and the examples are records, they fail in
     different ways, and keeping the fetches apart is what lets an ablation arm
     vary one without the other. Best-effort: "" on any failure.
     """
@@ -948,11 +948,11 @@ def _resolve_section_ranges(
 
     The model is asked for contiguous non-overlapping ranges covering the whole
     document, and mostly complies — but a malformed range must never silently
-    drop source text, since lost lines mean lost adversary behaviour. So this
+    drop source text, since lost lines mean lost adversary behavior. So this
     repairs rather than trusts:
 
     - out-of-range or inverted ranges are clamped (dropped if nothing is left)
-    - overlaps are resolved in favour of the earlier section
+    - overlaps are resolved in favor of the earlier section
     - gaps (including a short first/last section) are FILLED as
       behavioral_narrative at low confidence
 
@@ -1084,7 +1084,7 @@ async def _classify_sections(parsed_text: str) -> list[dict]:
         text = "\n".join(lines[start - 1:end])
         if not text.strip():
             # Whitespace-only run (page breaks, blank separators). Carries no
-            # behaviour and would only pad the chunker's prompt.
+            # behavior and would only pad the chunker's prompt.
             continue
 
         sections.append({

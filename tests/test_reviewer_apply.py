@@ -48,7 +48,7 @@ def _rec(**kw):
 class TestSparse:
     """Emit decisions ONLY for what the reviewer spoke about.
 
-    Not a size optimisation. Gate 0 removes a denylisted entity only when no
+    Not a size optimization. Gate 0 removes a denylisted entity only when no
     explicit decision arrives for it, so an approve-everything submission
     silently defeats the denylist — which is exactly the defect the analyst
     UI shipped with. Unattended, nobody would ever notice.
@@ -177,7 +177,7 @@ class TestRewindsAreFlaggedForTheCaller:
     without something checking the limit. TestAutoApplyEnforcesThePassLimit
     is where that now lives. What this class guards is that the rewind is
     neither silently dropped nor silently applied — it arrives, and it is
-    labelled.
+    labeled.
     """
 
     def test_chunk_rerun_converts_and_is_flagged(self):

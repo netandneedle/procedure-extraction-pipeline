@@ -60,7 +60,7 @@ describe("isBulkAcceptable", () => {
   });
 
   it("treats an unknown confidence value as not acceptable", () => {
-    // Fails closed: a value we do not recognise must not be bulk-applied.
+    // Fails closed: a value we do not recognize must not be bulk-applied.
     expect(isBulkAcceptable(rec({ confidence: "certain" }))).toBe(false);
     expect(isBulkAcceptable(rec({ confidence: undefined }))).toBe(false);
   });
@@ -119,7 +119,7 @@ describe("applyRecommendation", () => {
 
   it("never overwrites a rationale the analyst typed", () => {
     // Theirs is the more authoritative reason for the decision, and
-    // silently replacing text someone wrote is the surprising behaviour —
+    // silently replacing text someone wrote is the surprising behavior —
     // the same data-loss class already fixed for technique lists.
     const typed = { ...decision, rationale: "my own reasoning" };
     expect(applyRecommendation(typed, rec()).rationale).toBe("my own reasoning");
@@ -311,7 +311,7 @@ describe("chunk gate", () => {
 
 describe("chunk-gate undo restores the analyst's work", () => {
   // The rule the whole codebase now follows: undo gives back the PRE-APPLY
-  // state, never a clean rebuild. Gate 0 shipped the other behaviour once
+  // state, never a clean rebuild. Gate 0 shipped the other behavior once
   // and Gate 1 shipped it for technique lists — in both cases declining one
   // AI suggestion silently destroyed unrelated hand edits.
   //

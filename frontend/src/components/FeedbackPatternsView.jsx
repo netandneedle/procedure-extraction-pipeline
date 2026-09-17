@@ -149,7 +149,7 @@ export default function FeedbackPatternsView() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  // Corrections read out of a source's checkpoint, not yet generalised into
+  // Corrections read out of a source's checkpoint, not yet generalized into
   // patterns. Mixes still-running sources with failed ones — see the panel.
   const [captured, setCaptured] = useState([]);
   const [capturedTotal, setCapturedTotal] = useState(0);
@@ -348,7 +348,7 @@ export default function FeedbackPatternsView() {
       )}
 
       {/* Captured corrections — raw gate decisions read out of a source's
-          checkpoint, before the synthesizer generalises them into patterns.
+          checkpoint, before the synthesizer generalizes them into patterns.
 
           TWO populations live here, and conflating them is what made this
           panel lie. A RUNNING source's corrections really do become patterns

@@ -171,7 +171,7 @@ async def serialize_stix(state: PipelineState) -> dict:
     # schema check simply hard-fails first and never lets that soft path run.
     #
     # Dropped, not silent: each one is named here, and extract_techniques now
-    # warns separately when the pick step is what lost them. A behaviour with
+    # warns separately when the pick step is what lost them. A behavior with
     # no technique is still in the chunk record for the analyst; it just
     # cannot be expressed as an x-procedure.
     _mappable, _unmappable = [], []
@@ -770,10 +770,10 @@ def _resolve_ip(value: str) -> tuple[str, str] | None:
 
     So: parse, do not sniff. A trailing ``:port`` is stripped when what
     remains is a valid IPv4 — STIX ``ipv4-addr`` has no port field, and a port
-    belongs on a ``network-traffic`` SCO, which is a modelling decision rather
+    belongs on a ``network-traffic`` SCO, which is a modeling decision rather
     than part of this fix. A bracketed ``[::1]:443`` is unwrapped the same way.
     Anything still unparseable is dropped: losing one indicator is strictly
-    better than losing the bundle it travelled in.
+    better than losing the bundle it traveled in.
     """
     addr = (value or "").strip()
     if not addr:
@@ -931,7 +931,7 @@ CANONICAL_REGIONS = {
     "ANZ": "Australia and New Zealand",
 }
 
-# STIX region-ov values (UN M49-flavoured) are legitimately regions too, even
+# STIX region-ov values (UN M49-flavored) are legitimately regions too, even
 # though they are not in the canonical six — a source saying "Eastern Europe"
 # means a region, not a country. Kept verbatim rather than mapped onto an
 # acronym, for the widening reason in _build_sdo.

@@ -5,11 +5,11 @@ rule from each correction and injects the rule. Two measurements say that step
 is where the errors come from: a hand review dropped ~1 rule in 7 as wrong, and
 a calibration found 19 of the 25 rules that fired against real output
 never once agreed with the analyst. The rules that failed were advisory
-generalisations with implicit conditions; the idea was wrong, not the wording.
+generalizations with implicit conditions; the idea was wrong, not the wording.
 
-This module skips the generalisation. It keeps the correction itself and shows
+This module skips the generalization. It keeps the correction itself and shows
 the model the two or three most similar past ones. An example cannot be a wrong
-generalisation — it can only be irrelevant, and ranking by relevance is
+generalization — it can only be irrelevant, and ranking by relevance is
 machinery that already exists here.
 
 Both channels run. Nothing about the rules is removed by this module, and the
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Gate area -> the gates_enabled / gate_modes key that governs it. An example
 # is only written when a HUMAN stood at that gate: a disabled gate produces no
-# judgement, and a gate left on `auto` produces the AI reviewer's own opinion.
+# judgment, and a gate left on `auto` produces the AI reviewer's own opinion.
 # Every one of the original 63 patterns was synthesized from the latter, which
 # is the specific mistake this table exists not to repeat.
 _GATE_KEY_FOR_AREA = {

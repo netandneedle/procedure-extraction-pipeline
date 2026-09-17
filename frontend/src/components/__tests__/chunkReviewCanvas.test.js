@@ -253,7 +253,7 @@ describe("buildSubmitPayload", () => {
     // Note: two guards enforce this — an explicit isSyntheticId check and
     // the realIds membership test right after it. A synthetic id is never
     // in realIds, so either alone suffices and removing just one does not
-    // fail this test. It pins the BEHAVIOUR, not a particular line;
+    // fail this test. It pins the BEHAVIOR, not a particular line;
     // removing both guards does fail it.
     const out = buildSubmitPayload({
       ...base, edgeOps: [{ action: "add", from: "a", to: "add-1" }],

@@ -117,7 +117,7 @@ class AddedEntityRecommendation(_Recommendation):
 
 
 # A `<parameter name="...">` wrapper the model sometimes leaks into a field
-# value — its own tool-call serialisation showing through. Stripped rather
+# value — its own tool-call serialization showing through. Stripped rather
 # than tolerated: the brief is shown to the analyst and is the text every
 # later gate replays, so markup in it is noise in both places.
 _PARAM_WRAPPER_OPEN = re.compile(r'^\s*<parameter\s+name="[^"]*"\s*>')
@@ -171,7 +171,7 @@ class Gate0Recommendations(_StrictBase):
             #   '<parameter name="summary">Google Threat Intelligence Group
             #    reports Campaign 00.001, attributed to ...'
             #
-            # — the model's own tool-call serialisation leaking into the
+            # — the model's own tool-call serialization leaking into the
             # field, with good prose after it. `summary` is then at neither
             # level, `initial_read.summary:missing`, and the whole call
             # retries: a second Opus generation on the most expensive request
@@ -272,7 +272,7 @@ class DraftRecommendation(_Recommendation):
         ),
     )
     # No edited_name / edited_description on purpose. Gate1Review has no
-    # editing surface for either — `analyst_edits` is initialised to null and
+    # editing surface for either — `analyst_edits` is initialized to null and
     # no control ever writes to it — so a recommendation about wording would
     # be unactionable, and an unactionable recommendation is worse than none:
     # it spends the analyst's attention and teaches them the panel wastes it.

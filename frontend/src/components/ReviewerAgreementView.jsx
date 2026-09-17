@@ -234,7 +234,7 @@ export default function ReviewerAgreementView() {
           <p className="text-[11px] text-gb-fg4 mt-0.5 max-w-3xl">
             How often you took each gate&rsquo;s advice. Every gate you review in
             assist mode adds to this — an override is the valuable outcome, not
-            the embarrassing one: it is a labelled disagreement on a real source
+            the embarrassing one: it is a labeled disagreement on a real source
             with the correct answer attached.
           </p>
         </div>
@@ -269,7 +269,7 @@ export default function ReviewerAgreementView() {
             <br />
             <span className="text-[12px]">
               Approving everything without reading would measure the click, not
-              your judgement, so it would tell you nothing here.
+              your judgment, so it would tell you nothing here.
             </span>
           </p>
         )}

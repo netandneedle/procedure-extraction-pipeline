@@ -58,7 +58,7 @@ export default function ExplorerView() {
 
   // ── Fetch bundle list ──────────────────────────────────────────
   // usePolling carries the two lessons this view learned the hard way: a
-  // cancelled flag the callback checks before touching state (a fetch
+  // canceled flag the callback checks before touching state (a fetch
   // resolving after the toggle back to Kanban must no-op), and
   // setTimeout-recursion so a slow listBundles cannot stack a second
   // request on top of the first the way setInterval did.
@@ -87,20 +87,20 @@ export default function ExplorerView() {
       setSelectedBundle(null);
       return;
     }
-    let cancelled = false;
+    let canceled = false;
     setLoadingBundle(true);
     getBundle(selectedId)
       .then((data) => {
-        if (!cancelled) setSelectedBundle(data);
+        if (!canceled) setSelectedBundle(data);
       })
       .catch((err) => {
         console.error("ExplorerView: getBundle failed", err);
-        if (!cancelled) setSelectedBundle(null);
+        if (!canceled) setSelectedBundle(null);
       })
       .finally(() => {
-        if (!cancelled) setLoadingBundle(false);
+        if (!canceled) setLoadingBundle(false);
       });
-    return () => { cancelled = true; };
+    return () => { canceled = true; };
   }, [selectedId]);
 
   // Auto-select first bundle on load
@@ -128,7 +128,7 @@ export default function ExplorerView() {
   // button outside the browser window, where no mouseup ever arrives.
   //
   // lostpointercapture is the backstop — the browser fires it if capture is
-  // broken for any reason (element removed, pointer cancelled), so the drag
+  // broken for any reason (element removed, pointer canceled), so the drag
   // can never be left stuck on.
   const handleSplitPointerDown = useCallback((e) => {
     e.preventDefault();

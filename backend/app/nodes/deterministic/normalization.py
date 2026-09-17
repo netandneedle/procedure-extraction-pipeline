@@ -441,7 +441,7 @@ def _derive_relationship_preview(
         attributed-to:  campaign → intrusion-set | intrusion-set → threat-actor
         precedes:       x-procedure → x-procedure
 
-    Categorisation (PDM whitepaper §8.4):
+    Categorization (PDM whitepaper §8.4):
         Inherent (reviewable=False):
             - uses: x-procedure → attack-pattern (technique mapping from Gate 1)
         Reviewable (reviewable=True):
@@ -674,7 +674,7 @@ def _derive_relationship_preview(
     # positional, so a `normalize` re-run renumbers them and any Gate 2
     # removal the analyst already recorded would silently re-map onto a
     # different relationship. Content-derived ids survive re-derivation,
-    # which is what lets serialize_stix honour a removal.
+    # which is what lets serialize_stix honor a removal.
     #
     # Collisions are possible in principle (two drafts sharing a name and
     # linking to the same target) — suffix them so ids stay unique and the

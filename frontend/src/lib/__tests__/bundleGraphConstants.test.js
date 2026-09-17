@@ -1,8 +1,8 @@
 /**
  * Consistency tests for the bundle-graph visual constants.
  *
- * These are four parallel lookup tables — type config, edge colours, filter
- * layers, layer colours — that have to agree with each other. Nothing
+ * These are four parallel lookup tables — type config, edge colors, filter
+ * layers, layer colors — that have to agree with each other. Nothing
  * enforced that. A STIX type present in KNOWN_TYPES but absent from every
  * FILTER_LAYER renders as a node no filter can show or hide, which looks
  * like a rendering bug and is really a missing table entry.
@@ -28,7 +28,7 @@ import {
 
 // Snapshot the BUILT-IN types at import time, before any test runs.
 // getTypeConfig deliberately memoises unknown types INTO KNOWN_TYPES so a
-// colour stays stable across views in a session — which means the table is
+// color stays stable across views in a session — which means the table is
 // not constant, and asserting over it after other tests have called
 // getTypeConfig would be asserting over their leftovers.
 const BUILTIN_TYPES = Object.keys(KNOWN_TYPES);
@@ -53,7 +53,7 @@ describe("getTypeConfig", () => {
 });
 
 describe("edgeColor", () => {
-  it("returns the configured colour for a known relationship type", () => {
+  it("returns the configured color for a known relationship type", () => {
     const [known] = Object.keys(EDGE_COLORS);
     expect(edgeColor(known)).toBe(EDGE_COLORS[known]);
   });
@@ -94,9 +94,9 @@ describe("the tables agree with each other", () => {
     expect(orphans, `types with no filter layer: ${orphans.join(", ")}`).toEqual([]);
   });
 
-  it("every filter layer has a colour", () => {
+  it("every filter layer has a color", () => {
     const missing = FILTER_LAYER_NAMES.filter((name) => !LAYER_COLORS[name]);
-    expect(missing, `layers with no colour: ${missing.join(", ")}`).toEqual([]);
+    expect(missing, `layers with no color: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("every type named by a filter layer is a known type", () => {
@@ -125,7 +125,7 @@ describe("the tables agree with each other", () => {
 });
 
 describe("getTypeConfig memoisation", () => {
-  it("registers an unknown type so its colour is stable across views", () => {
+  it("registers an unknown type so its color is stable across views", () => {
     const a = getTypeConfig("stable-type-check");
     const b = getTypeConfig("stable-type-check");
     expect(b).toBe(a);

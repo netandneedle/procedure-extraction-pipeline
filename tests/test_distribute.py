@@ -429,7 +429,7 @@ class TestCatalogueIsNotOverwritten:
 
 class TestNodesMatchTheCatalogueShape:
     def test_dual_label_so_stix_object_queries_and_the_index_reach_us(self):
-        """`stix_id`'s index is scoped to :STIXObject. A single-labelled node
+        """`stix_id`'s index is scoped to :STIXObject. A single-labeled node
         is both invisible to those queries and unable to use it."""
         q = _build_node_query({"type": "tool", "id": "tool--abc", "name": "x"})
         assert "MERGE (n:Tool:STIXObject {stix_id: $stix_id})" in q["query"]

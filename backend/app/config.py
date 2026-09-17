@@ -121,11 +121,11 @@ class Settings(BaseSettings):
     # structured-key overlap + salience).
     # Dedup is a CONJUNCTION, and the cosine bar is calibrated to the genre it
     # is applied to. SecureBERT scores ~0.91 for two paraphrases of one threat
-    # BEHAVIOUR, but feedback patterns are instructional RULES, where its scale
+    # BEHAVIOR, but feedback patterns are instructional RULES, where its scale
     # is compressed: the most similar pair of real patterns scored ~0.70, so a
     # 0.90 bar was unreachable and no merge ever fired. Cosine alone cannot
     # separate the classes either (a true duplicate and a distinct pair both
-    # scored ~0.58), so token overlap is required alongside it: on hand-labelled
+    # scored ~0.58), so token overlap is required alongside it: on hand-labeled
     # pairs the duplicates ran >= 0.228 overlap and the distinct pairs <= 0.164,
     # and 0.20 sits in that gap. Both bars must be cleared. Re-calibrate both
     # if the embedding model changes.

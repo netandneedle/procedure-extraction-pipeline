@@ -432,7 +432,7 @@ def _llm_reply(attributions):
 
 
 class TestMissAttribution:
-    """Which rule a correction is charged to is a judgement, not a lookup.
+    """Which rule a correction is charged to is a judgment, not a lookup.
 
     The deterministic matcher can only ask "do these name the same technique",
     which is neither necessary nor sufficient. On one espionage-RAT run the analyst

@@ -239,7 +239,7 @@ INDEX_QUERIES = [
     # The technique pivot looks techniques up by ATT&CK ID, not by stix_id, and
     # had no index at all.
     "CREATE INDEX mitre_id_idx IF NOT EXISTS FOR (n:AttackPattern) ON (n.mitre_id)",
-    # Exact behavioural grouping of procedures (hash of techniques + platforms
+    # Exact behavioral grouping of procedures (hash of techniques + platforms
     # + tactics). Complements the overlap join, which is a different question.
     "CREATE INDEX procedure_fingerprint_idx IF NOT EXISTS "
     "FOR (n:Procedure) ON (n.x_fingerprint)",

@@ -47,7 +47,7 @@ import { getTypeConfig, operatorKindColor } from "../lib/bundleGraphConstants";
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 88;
 // 80/60 fits typical 5-12 procedure bundles without crowding. Operator and
-// condition chips carry their own narrower `width`, which the layout honours.
+// condition chips carry their own narrower `width`, which the layout honors.
 const FLOW_LAYOUT = { rankdir: "TB", nodesep: 80, ranksep: 60, marginx: 30, marginy: 30, width: NODE_WIDTH, height: NODE_HEIGHT };
 // Flow-control nodes are deliberately narrower than procedures so the
 // eye reads them as junctions rather than content.
@@ -517,7 +517,7 @@ function FlowInner({ bundle }) {
     return map;
   }, [bundle]);
 
-  // Neighbours of the selected node, derived from the PRECEDES-edge flow
+  // Neighbors of the selected node, derived from the PRECEDES-edge flow
   // graph (x_effect_refs was removed in v0.5.0-draft — sequencing lives
   // only in the SROs now).
   const selectedSuccessorRefs = useMemo(

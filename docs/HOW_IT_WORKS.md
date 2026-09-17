@@ -14,11 +14,11 @@ from corrections is its own document, [FEEDBACK_FLYWHEEL.md](FEEDBACK_FLYWHEEL.m
 Threat intelligence has a good vocabulary for *what* adversaries do. MITRE
 ATT&CK's technique T1059.001 says "adversaries abuse PowerShell". That is true
 of thousands of unrelated intrusions, which is why it is nearly useless to a
-defender on its own. What a defender needs is the *how*: a named behaviour, the
+defender on its own. What a defender needs is the *how*: a named behavior, the
 actual command line, the parent process, the platform, the tactic it served,
 and a citation to the report that described it.
 
-That "how" is what this pipeline extracts. It is modelled as a STIX 2.1
+That "how" is what this pipeline extracts. It is modeled as a STIX 2.1
 extension object called `x-procedure`, and it is the only thing in the output
 that is not already a standard STIX type. Every bundle embeds the
 `extension-definition` that declares it, so a STIX consumer can tell what the
@@ -37,7 +37,7 @@ well-formed:
 
 Two design rules follow from that and shape everything downstream.
 
-**Every procedure is an instance, not a template.** The same behaviour reported
+**Every procedure is an instance, not a template.** The same behavior reported
 by two vendors becomes two objects with the same name, different IDs and
 different source references. Deduplication happens at query time, through a
 computed fingerprint (a hash of the sorted techniques, platforms and tactics),
@@ -49,7 +49,7 @@ not an invented command line. Fabricated detail is worse than missing detail
 because it looks like evidence. Confidence here means "how completely have we
 decomposed this", not "how strongly does the model feel about it".
 
-> **A real one, from the sample run.** `Automate Ransomware Deployment via Batch Scripts` — techniques T1059.003 Windows Command Shell, T1136.001 Local Account, T1484.001 Group Policy Modification, T1112 Modify Registry, T1685.005 Clear Windows Event Logs, T1027.013 Encrypted/Encoded File; platforms Windows; confidence 78 (source reliability 80 blended with the model's behavioural confidence and a still-empty component set, which is why it is not higher). Its description opens: "Automate ransomware deployment and execution while establishing a backup admin account and erasing event logs to evade detection and hinder incident response. R…"
+> **A real one, from the sample run.** `Automate Ransomware Deployment via Batch Scripts` — techniques T1059.003 Windows Command Shell, T1136.001 Local Account, T1484.001 Group Policy Modification, T1112 Modify Registry, T1685.005 Clear Windows Event Logs, T1027.013 Encrypted/Encoded File; platforms Windows; confidence 78 (source reliability 80 blended with the model's behavioral confidence and a still-empty component set, which is why it is not higher). Its description opens: "Automate ransomware deployment and execution while establishing a backup admin account and erasing event logs to evade detection and hinder incident response. R…"
 
 
 ## 2. The shape of a run
@@ -69,7 +69,7 @@ decisions, and the pipeline continues.
 
 Seven of the sixteen nodes call a language model. The rest are ordinary Python,
 and the dividing line is deliberate: deterministic wherever possible, a model
-only where judgement is genuinely needed. Several things people assume are AI
+only where judgment is genuinely needed. Several things people assume are AI
 are not — technique ID validation, the brand map, fingerprinting, denylist
 enforcement and every piece of STIX validation are plain code.
 
@@ -119,21 +119,21 @@ budget; the figure is then marked failed and the run continues without it.
 
 ### Classify sections
 
-**In:** the Markdown. **Out:** each section labelled by function — behavioural
+**In:** the Markdown. **Out:** each section labeled by function — behavioral
 narrative, indicator list, mitigation advice, boilerplate. **Model:** yes.
 
 The advisory's "Technical Details" section is where the attack is described;
 its "Mitigations" section is advice to defenders and would poison extraction
-if treated as adversary behaviour. This stage is a recall tool: when unsure it
+if treated as adversary behavior. This stage is a recall tool: when unsure it
 labels a section as narrative and lets the chunker decide.
 
 ### Extract entities
 
 **In:** the classified document. **Out:** a typed list of named things —
-intrusion sets, malware, tools, organisations, locations, vulnerabilities —
-plus one judgement about the whole document. **Model:** yes.
+intrusion sets, malware, tools, organizations, locations, vulnerabilities —
+plus one judgment about the whole document. **Model:** yes.
 
-The document-level judgement is whether the source is *sequential*: an incident
+The document-level judgment is whether the source is *sequential*: an incident
 report describes events in order; a threat-actor profile is a catalogue with no
 order at all. That single boolean decides, three stages later, whether the
 pipeline is allowed to build a kill chain. The model is told to prefer "not
@@ -149,7 +149,7 @@ later as technique candidates instead.
 
 ### Gate 0 — entities
 
-The analyst sees every entity with its type and, for organisations and
+The analyst sees every entity with its type and, for organizations and
 locations, its role: author, publisher, sponsor, victim, origin. They can edit,
 remove, add, or correct a role. Denylisted entities arrive pre-marked for
 removal with a badge and can be flipped back for this source only. Nothing
@@ -177,7 +177,7 @@ document too large for one call fails loudly rather than mis-sequencing.
 
 When the source was judged non-sequential, the model is told to leave the
 predecessor links empty unless the text explicitly states an order, and the
-backstop that links orphaned chunks to their neighbour is switched off. A
+backstop that links orphaned chunks to their neighbor is switched off. A
 catalogue of twenty unrelated procedures gets no invented kill chain.
 
 *What can go wrong:* zero chunks is a hard failure, not an empty success. The
@@ -188,7 +188,7 @@ empty list.
 
 A three-pane canvas: the source text on the left with every chunk's excerpt
 highlighted, the chunk graph in the middle, a field editor on the right. Click
-a highlight and the graph centres on that chunk. Drag between nodes to add an
+a highlight and the graph centers on that chunk. Drag between nodes to add an
 ordering edge; select an edge and press Delete to remove it. The analyst can
 edit a chunk's text or excerpt, drop it, add one the model missed, and set
 branch and convergence flags where the attack forks or rejoins.
@@ -239,7 +239,7 @@ with the objective, platforms, the command lines the source actually contains,
 and the observables. **Model:** yes.
 
 Names carry no actor: attribution belongs on graph edges, and the moment an
-actor's name is in the string, the same behaviour from a different actor
+actor's name is in the string, the same behavior from a different actor
 becomes a different object.
 
 ### Gate 2 — techniques
@@ -260,10 +260,10 @@ fingerprints, a blended confidence, the resolved sequence, and a preview of
 every relationship the bundle will contain. **Model:** none.
 
 Confidence is a weighted blend: how much the analyst trusts the publisher, how
-confident the model was in the behaviour, and how complete the component set
+confident the model was in the behavior, and how complete the component set
 is. Sequencing is resolved here from the chunk predecessor graph into
 `PRECEDES` links, and where the graph forks or rejoins, Attack Flow operator
-objects (AND, OR, XOR) are materialised. Where the source described a runtime
+objects (AND, OR, XOR) are materialized. Where the source described a runtime
 check ("if domain-joined, Kerberoast; otherwise NTLM relay"), that becomes an
 Attack Flow condition.
 
@@ -361,7 +361,7 @@ says it for you.
 Five rules explain most of the design decisions above.
 
 - **Deterministic wherever possible.** A model call is a cost, a latency and a
-  source of variance; it is spent only where judgement is needed.
+  source of variance; it is spent only where judgment is needed.
 - **Every model claim is anchored in the source.** Chunks carry their excerpt
   and its offsets; technique picks carry a quote that must be literally
   present. Evidence the model cannot point at is evidence the pipeline does not

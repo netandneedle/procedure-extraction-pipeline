@@ -67,7 +67,7 @@ present in the Python tree.
 
 ## 3. Python, transitive dependencies worth knowing about
 
-Not declared directly, but they decide image size and behaviour.
+Not declared directly, but they decide image size and behavior.
 
 | Package | Resolved | License | Why it is here |
 |---|---|---|---|

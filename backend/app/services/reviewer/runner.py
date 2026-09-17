@@ -288,7 +288,7 @@ async def _build_messages(
     #
     # What is left is paying 1.25x to write a cache nothing reads: ~12% worse
     # per gate. The one place it did pay was the entities retry re-reading its
-    # own prefix -- and optimising for a retry means optimising for a bug.
+    # own prefix -- and optimizing for a retry means optimizing for a bug.
     #
     # Making it work would need identical tools AND system on every gate (pass
     # all three tool schemas everywhere and select with tool_choice). Possible,

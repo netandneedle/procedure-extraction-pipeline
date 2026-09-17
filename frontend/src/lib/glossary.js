@@ -76,7 +76,7 @@ export const GLOSSARY = {
   // ── Gate 0 — entities ───────────────────────────────────────────────
   "entity-type":
     "What kind of thing this is — actor, malware, tool, indicator and so on. " +
-    "Changing it changes how the entity is modelled in the bundle.",
+    "Changing it changes how the entity is modeled in the bundle.",
 
   "entity-role":
     "What part this plays in the report: the victim, the attack's origin, the " +

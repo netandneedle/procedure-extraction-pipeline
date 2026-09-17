@@ -14,7 +14,7 @@
  * with `applyPositions`.
  *
  * This replaced three diverged copies of the same function (chunk canvas,
- * bundle canvas, flow view); only one honoured per-node width/height, so
+ * bundle canvas, flow view); only one honored per-node width/height, so
  * the same attack-operator was a narrow chip in one view and a full-width
  * card in another.
  */

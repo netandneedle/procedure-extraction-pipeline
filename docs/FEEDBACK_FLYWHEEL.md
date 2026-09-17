@@ -22,29 +22,33 @@ code. [HOW_IT_WORKS.md](HOW_IT_WORKS.md) covers the pipeline the loop sits in;
 
 ## 1. The problem it solves
 
-This pipeline reads a threat-intelligence report and produces a structured
-description of what the attacker did. Language models do the judgement-heavy
-steps; a human analyst reviews the output at four checkpoints called gates:
-one for extracted entities, one for the behavioural chunks, one for technique
-mappings, one for the final bundle. At each gate the analyst can approve,
-edit, or reject.
+In the simplest terms, the feedback flywheel is how the pipeline learns from
+the analyst. The pipeline reads a threat-intelligence report and produces a
+structured description of what the attacker did, with a human analyst
+checking the output at four checkpoints called gates and approving, editing,
+or rejecting what the model produced. The flywheel takes each of those
+corrections and turns it into something the pipeline remembers, so the same
+mistake is not made again on the next report, and so the analyst is not
+asked to fix the same thing over and over.
 
-Without the flywheel, every one of those corrections dies with the report. An
-analyst rejects `info@cert.example` because it is the *defender's* contact
-address printed in a report letterhead, not an attacker's email. The next
-report from the same vendor arrives, and the model extracts the same kind of
-address again. The analyst re-litigates the same false positive forever.
+It does this in three steps. First, when a run finishes, it compares what the
+model produced against what the analyst kept, and writes the difference down
+as a short rule in plain language, such as "a contact address printed in a
+vendor's report letterhead belongs to the defender, not the attacker."
+Second, when the next report comes in, it looks through the stored rules and
+hands the model only the handful that fit that report, the way a colleague
+would mention the one or two things worth knowing rather than reciting every
+lesson they have ever learned. Third, after that run is reviewed, it checks
+whether each rule it handed over actually stopped the analyst from making the
+same correction again. Rules that keep helping are shown more often; rules
+that do not fade out.
 
-The naive fix is "edit the prompt". That does not scale: the corrections are
-numerous, narrow, and mutually irrelevant. A rule about report letterheads
-has nothing to teach a ransomware write-up, and a prompt stuffed with every
-rule ever learned degrades faster than it improves.
-
-So the flywheel does three things instead. It turns each correction into a
-**generalisable rule** stored as a database row. It retrieves only the rules
-**relevant to the report currently being processed**. And it **measures
-whether each rule actually prevented the correction it was meant to
-prevent**, so useless rules sink and useful ones rise.
+The obvious alternative, editing the model's instructions by hand each time,
+does not scale. The corrections are numerous, narrow, and mostly irrelevant
+to each other: a rule about report letterheads has nothing to teach a
+ransomware write-up, and instructions stuffed with every rule ever learned
+get worse faster than they get better. Storing the rules, choosing the
+relevant few, and grading them is what keeps the memory useful as it grows.
 
 > **The core claim.** Learning from human feedback does not require
 > retraining a model. It requires a store of corrections, a retriever that
@@ -104,7 +108,7 @@ looked. That signal was lost this way before the ledgers existed.
 
 After the run finishes and the bundle has shipped, one more model call
 receives a digest of every gap between what the model produced and what the
-analyst accepted. Its job is to write **generalisable rules**, and the prompt
+analyst accepted. Its job is to write **generalizable rules**, and the prompt
 is explicit about the difference, with worked examples:
 
 - **Bad:** "`info@cert.example` was rejected as an indicator."
@@ -138,12 +142,12 @@ each with an occurrence count of one, and occurrence count is a signal the
 ranker depends on.
 
 The two bars are calibrated to the genre. The embedding model returns about
-0.91 for two paraphrases of one threat *behaviour*, but these rules are
+0.91 for two paraphrases of one threat *behavior*, but these rules are
 *instructional* text, where its scale compresses: the most similar pair of
 real rules scored about 0.70, so a 0.90 bar was unreachable by construction.
 Lowering it alone does not work either, because a true duplicate and a
 genuinely distinct pair both scored about 0.58. Cosine cannot separate those,
-so token overlap is required alongside it; on hand-labelled pairs the
+so token overlap is required alongside it; on hand-labeled pairs the
 duplicates ran at 0.228 overlap or higher and the distinct pairs at 0.164 or
 lower. The conjunction is biased toward *not* merging, because a false merge
 silently deletes one rule's guidance while a missed merge only leaves a
@@ -177,7 +181,7 @@ embedding similarity at or above 0.55 between the rule and the correction.
 
 - Correction recurred: **miss**.
 - A human reviewed that gate and corrected nothing: **hit**.
-- Nobody with judgement looked: **unscored**.
+- Nobody with judgment looked: **unscored**.
 
 Only hits and misses move the counters, and a hit requires a human to have
 actually looked: the gate must have been enabled and not running unattended.
@@ -192,7 +196,7 @@ readout on the Reviewer tab, for the same reason.
 
 ## 3. Two channels: rules and examples
 
-Everything above describes **rules**: a model's generalisation *about* a
+Everything above describes **rules**: a model's generalization *about* a
 correction. There is a second channel, and when the two disagree it is the
 one to prefer.
 
@@ -201,7 +205,7 @@ what the analyst made of it, and their own words. Examples are recorded by the
 same post-run step, before the synthesis call, so the record does not depend
 on the model call succeeding.
 
-The generalisation step is where the measured errors are. A hand review of
+The generalization step is where the measured errors are. A hand review of
 the synthesised rules dropped roughly one in seven as wrong, and a
 calibration run found that most of the rules that fired against real output
 had never once agreed with the analyst. An example cannot be wrong in that
@@ -397,7 +401,7 @@ Every one of these is a general shape, not a quirk of this codebase.
    tighter than feels necessary.*
 6. **Two written forms of one value drifting apart.** Threat intel is often
    written defanged (`evil[.]com`); denylist terms entered that way never
-   matched the normalised entity values. *Normalise at both the write and the
+   matched the normalized entity values. *Normalize at both the write and the
    query.*
 7. **Scoring a followed instruction as a failure.** The miss detector once
    folded the analyst's *full final* technique list into the match text,

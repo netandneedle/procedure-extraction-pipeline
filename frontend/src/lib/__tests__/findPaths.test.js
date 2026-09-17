@@ -32,7 +32,7 @@ describe("buildAdjacency", () => {
 
   it("drops self-loops", () => {
     // A STIX object referencing itself would otherwise make a node its own
-    // neighbour and pad every path through it.
+    // neighbor and pad every path through it.
     const adj = buildAdjacency(edges(["a", "a"]));
     expect(adj.has("a")).toBe(false);
   });
@@ -99,7 +99,7 @@ describe("findAllShortestPaths", () => {
     expect(findAllShortestPaths(adj, "a", "c")).toEqual([["a", "c"]]);
   });
 
-  it("honours maxDepth by refusing paths that are too deep", () => {
+  it("honors maxDepth by refusing paths that are too deep", () => {
     const adj = buildAdjacency(edges(["a", "b"], ["b", "c"], ["c", "d"]));
     expect(findAllShortestPaths(adj, "a", "d", { maxDepth: 1 })).toEqual([]);
     expect(findAllShortestPaths(adj, "a", "d", { maxDepth: 10 })).toHaveLength(1);
@@ -136,7 +136,7 @@ describe("collectPathElements", () => {
   it("collects the nodes and edge keys along the paths", () => {
     const out = collectPathElements([["a", "b", "c"]]);
     expect([...out.nodeSet].sort()).toEqual(["a", "b", "c"]);
-    // Edge keys are order-normalised (a|b, not b|a) so an undirected
+    // Edge keys are order-normalized (a|b, not b|a) so an undirected
     // edge has one identity regardless of traversal direction.
     expect([...out.edgeSet].sort()).toEqual(["a|b", "b|c"]);
   });

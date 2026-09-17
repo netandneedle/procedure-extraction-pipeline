@@ -62,7 +62,7 @@ change. `backend/tests/test_llm_providers.py` pins the key format.
 **Prompts.** The system prompt is part of the cache key, so editing a prompt
 already invalidates its cache. Worked examples inside prompts must be
 synthetic: `example.com`, RFC 5737 addresses, made-up hashes. Never paste a
-real indicator or a real organisation's contact details into a prompt.
+real indicator or a real organization's contact details into a prompt.
 
 ## Domain rules
 

@@ -586,8 +586,8 @@ export default function BundleGraph({ bundleJson, className = "" }) {
     }
 
     // Nodes — each node is a rounded-square badge with a white MDI
-    // glyph inside, mirroring the OpenCTI ItemIcon visual language and
-    // the React Flow viewers' StixNodeIcon component.
+    // glyph inside, the same badge the React Flow viewers draw with
+    // their StixNodeIcon component.
     for (const n of nodes) {
       const cat = getTypeConfig(n.type);
       const isSelected = s.selectedNode && s.selectedNode.id === n.id;

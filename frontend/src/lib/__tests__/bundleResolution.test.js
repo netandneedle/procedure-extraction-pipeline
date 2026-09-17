@@ -2,7 +2,7 @@
  * Tests for the bundle-viewer resolution layer.
  *
  * This is what turns raw STIX ids into something an analyst can read, and
- * what derives the Flow tab's graph. Its defensive behaviour matters as much
+ * what derives the Flow tab's graph. Its defensive behavior matters as much
  * as its happy path: bundles legitimately contain refs to objects that are
  * NOT embedded (ATT&CK attack-patterns are referenced, never copied in), so
  * "unresolvable" is normal and must degrade to a readable label rather than

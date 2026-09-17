@@ -89,7 +89,7 @@ def is_gate_enabled(state: Mapping, key: str) -> bool:
 
 # How a gate that IS enabled gets reviewed.
 #
-#   review  — a human reviews it. Today's behaviour, and the default.
+#   review  — a human reviews it. Today's behavior, and the default.
 #   assist  — the AI reviewer recommends; a human still decides and submits.
 #   auto    — the AI reviewer decides and the pipeline advances unattended.
 #
@@ -127,7 +127,7 @@ def resolve_display_title(state: Mapping, default: str) -> str:
 
         state.title  (unless it is the "Untitled Source" placeholder the
                       API fills in when the analyst set none)
-        metadata.title  (legacy; still honoured for hand-built states)
+        metadata.title  (legacy; still honored for hand-built states)
         default
     """
     state_title = (state.get("title") or "").strip()
@@ -178,7 +178,7 @@ def gate_mode(state: Mapping, key: str) -> str:
     """Return the review mode for the named gate.
 
     Reads ``state["gate_modes"]``. Absent or malformed -> "review", which is
-    exactly the behaviour every checkpoint written before this field existed
+    exactly the behavior every checkpoint written before this field existed
     already has. Back-compat is by construction here, not by a shim: there is
     no legacy shape to tolerate because the field is new.
 
@@ -687,7 +687,7 @@ class PipelineState(TypedDict, total=False):
     # GATE_KEYS → "review" | "assist" | "auto". Only meaningful for gates
     # that are ENABLED; a disabled gate has no reviewer. Absent on every
     # checkpoint written before this field existed, which gate_mode() reads
-    # as "review" — i.e. unchanged behaviour. See normalize_gate_modes().
+    # as "review" — i.e. unchanged behavior. See normalize_gate_modes().
     gate_modes: dict[str, str]
 
     # Analyst's pre-flight answer to "does this source include sequential

@@ -45,7 +45,7 @@ export default function GateReviewPanel({ source, onClose, onSubmitted }) {
   /** Fetch pending review data when panel opens. */
   useEffect(() => {
     if (threadId == null || gateId == null) return;
-    let cancelled = false;
+    let canceled = false;
 
     setLoading(true);
     setError(null);
@@ -54,19 +54,19 @@ export default function GateReviewPanel({ source, onClose, onSubmitted }) {
       : fetchPendingReview(threadId, gateId);
     fetcher
       .then((data) => {
-        if (!cancelled) setPayload(data);
+        if (!canceled) setPayload(data);
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (!canceled) {
           const detail = err?.response?.data?.detail;
           setError(typeof detail === "string" ? detail : String(detail ?? "Failed to load review data."));
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!canceled) setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => { canceled = true; };
   }, [threadId, gateId]);
 
   /** Fetch AI reviewer recommendations alongside the gate payload.
@@ -83,16 +83,16 @@ export default function GateReviewPanel({ source, onClose, onSubmitted }) {
       setBrief(null);
       return;
     }
-    let cancelled = false;
+    let canceled = false;
     Promise.all([
       fetchRecommendations(sourceId, gate.enableKey).catch(() => null),
       fetchBrief(sourceId).catch(() => null),
     ]).then(([recs, briefRow]) => {
-      if (cancelled) return;
+      if (canceled) return;
       setRecommendations(recs?.payload ?? null);
       setBrief(briefRow);
     });
-    return () => { cancelled = true; };
+    return () => { canceled = true; };
   }, [source?.id, gateId]);
 
   /** Save a corrected brief, then pull the re-run recommendations. */

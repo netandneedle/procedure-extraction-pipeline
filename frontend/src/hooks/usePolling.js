@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
  * Carries the fixes the app's earlier pollers each learned separately:
  * - setTimeout-recursion instead of setInterval, so a slow callback can't
  *   stack parallel invocations (the App.jsx source-poller lesson);
- * - a cancelled flag, exposed to the callback as an `isCancelled()` getter,
+ * - a canceled flag, exposed to the callback as an `isCancelled()` getter,
  *   so an in-flight response resolving after unmount can't write state
  *   (the ExplorerView lesson);
  * - the latest callback is read through a ref, so a changing identity
@@ -23,15 +23,15 @@ export default function usePolling(callback, intervalMs, { immediate = true } = 
   cbRef.current = callback;
 
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     let timer = null;
-    const isCancelled = () => cancelled;
+    const isCancelled = () => canceled;
 
     const tick = async () => {
       try {
         await cbRef.current(isCancelled);
       } finally {
-        if (!cancelled) timer = setTimeout(tick, intervalMs);
+        if (!canceled) timer = setTimeout(tick, intervalMs);
       }
     };
 
@@ -39,7 +39,7 @@ export default function usePolling(callback, intervalMs, { immediate = true } = 
     else timer = setTimeout(tick, intervalMs);
 
     return () => {
-      cancelled = true;
+      canceled = true;
       if (timer) clearTimeout(timer);
     };
   }, [intervalMs, immediate]);

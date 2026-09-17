@@ -31,13 +31,13 @@ describe("layoutSignature", () => {
 });
 
 describe("layoutPositions", () => {
-  it("positions every node and honours per-node width when centring", () => {
+  it("positions every node and honors per-node width when centering", () => {
     const pos = layoutPositions(nodes, edges, { rankdir: "TB" });
     expect([...pos.keys()].sort()).toEqual(["a", "b", "c"]);
     // A linear chain stacks top-to-bottom: each rank strictly below the last.
     expect(pos.get("b").y).toBeGreaterThan(pos.get("a").y);
     expect(pos.get("c").y).toBeGreaterThan(pos.get("b").y);
-    // The narrow node is centred on the same axis as the wide ones, so its
+    // The narrow node is centered on the same axis as the wide ones, so its
     // top-left x sits (200 - 90) / 2 to the right of theirs.
     expect(pos.get("c").x - pos.get("a").x).toBeCloseTo(55, 5);
   });

@@ -1,9 +1,9 @@
 """Tests for reading the vendor's own ATT&CK mapping table.
 
-The table is the report authors' considered judgement about what they
+The table is the report authors' considered judgment about what they
 observed, and until this module existed nothing in the pipeline read it —
 on one campaign report it names `T1204.004 Malicious Copy and Paste` outright while
-the picker spent two runs landing on neighbouring sub-techniques.
+the picker spent two runs landing on neighboring sub-techniques.
 """
 
 from __future__ import annotations

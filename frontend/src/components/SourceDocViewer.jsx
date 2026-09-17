@@ -39,7 +39,7 @@ export default function SourceDocViewer({ bundleId, fileName, fileType }) {
       setTextContent(null);
       return;
     }
-    let cancelled = false;
+    let canceled = false;
     setLoading(true);
     fetch(sourceUrl)
       .then((r) => {
@@ -47,16 +47,16 @@ export default function SourceDocViewer({ bundleId, fileName, fileType }) {
         return r.text();
       })
       .then((text) => {
-        if (!cancelled) setTextContent(text);
+        if (!canceled) setTextContent(text);
       })
       .catch((err) => {
         console.error("SourceDocViewer: fetch failed", err);
-        if (!cancelled) setTextContent("[Failed to load source content]");
+        if (!canceled) setTextContent("[Failed to load source content]");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!canceled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => { canceled = true; };
   }, [bundleId, isText, sourceUrl]);
 
   const handleOpenExternal = useCallback(() => {

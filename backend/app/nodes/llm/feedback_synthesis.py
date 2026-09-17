@@ -303,7 +303,7 @@ async def synthesize_feedback(state: PipelineState) -> dict:
 
         # Keep the corrections themselves, not only the rules an LLM writes
         # about them. This runs BEFORE the synthesis call and does not depend
-        # on it: the generalisation step is the one measured to produce wrong
+        # on it: the generalization step is the one measured to produce wrong
         # guidance (1 rule in 7 dropped by hand; 19 of 25 never agreeing with
         # the analyst when checked), so the record must not be hostage to it.
         example_recording = await record_examples(state, deltas)
@@ -913,7 +913,7 @@ _AREA_FOR_CATEGORY = {
 # area -> the key in the _compute_deltas() dict.
 # Which gate's review produces evidence about a pattern in this area. Used to
 # decide whether a surfacing can be scored at all: a gate that was disabled,
-# or was decided by the AI reviewer unattended, yields no human judgement, and
+# or was decided by the AI reviewer unattended, yields no human judgment, and
 # "nobody corrected anything" is then not evidence the pattern held.
 _GATE_KEY_FOR_AREA = {
     "entities": "entities",
@@ -1067,7 +1067,7 @@ def _pattern_was_recorrected(pattern: FeedbackPattern, area_deltas: dict) -> boo
 #
 # WHY THIS IS AN LLM CALL AND NOT A LOOKUP:
 # Attribution asks "is this correction an instance of the error this rule
-# describes?" — a judgement about a rule and an event. The only deterministic
+# describes?" — a judgment about a rule and an event. The only deterministic
 # handle available is "do they name the same ATT&CK technique", which is
 # neither necessary nor sufficient.
 #
@@ -1435,7 +1435,7 @@ async def _score_surfacings(state: PipelineState, deltas: dict) -> dict:
             await db.commit()
         logger.info(
             "synthesize_feedback: closed out %d surfaced pattern(s) — "
-            "%d hit, %d miss, %d unscored (no human judgement at that gate)",
+            "%d hit, %d miss, %d unscored (no human judgment at that gate)",
             result["scored"], result["hits"], result["misses"],
             result["unscored"],
         )

@@ -3,7 +3,7 @@
 Why this exists
 ---------------
 Most vendor CTI reports end with a "MITRE ATT&CK Mapping" table listing the
-techniques the authors say they observed. That is a considered judgement by
+techniques the authors say they observed. That is a considered judgment by
 analysts who had the full incident in front of them — the closest thing to a
 ground truth the pipeline will ever be handed.
 

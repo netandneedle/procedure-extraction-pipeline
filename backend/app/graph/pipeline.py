@@ -196,7 +196,7 @@ def build_pipeline() -> StateGraph:
               |                       (skipped when Source.extract_figures=False
               |                        or source_type lacks images)
               |
-        classify_sections         <-- which sections carry behaviour
+        classify_sections         <-- which sections carry behavior
               |
         extract_entities
               |

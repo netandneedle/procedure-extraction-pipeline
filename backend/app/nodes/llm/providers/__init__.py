@@ -16,7 +16,7 @@ The split is deliberate and narrow:
   * ``call_llm`` keeps everything else — the response cache, Pydantic
     validation with bounded retry, the refusal retry, the stringified-field
     coercion, and token accounting. None of that is vendor-specific, and all
-    of it is hard-won behaviour that should not be duplicated per provider.
+    of it is hard-won behavior that should not be duplicated per provider.
 
 This mirrors ``app.services.technique_retriever``: a Protocol, one
 implementation per backend, a config string selecting between them, and a

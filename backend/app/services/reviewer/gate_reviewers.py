@@ -52,7 +52,7 @@ _ENTITY_TYPE_ENUM = [e.value for e in EntityType]
 # no vocabulary value. The analyst took the recommendation, and the bundle
 # validator silently dropped the sector from the Identity.
 #
-# The lesson generalises past sectors: a reviewer holding less context than
+# The lesson generalizes past sectors: a reviewer holding less context than
 # the stage it reviews will "correct" deliberate decisions into mistakes, and
 # do it with real evidence attached. Any constrained vocabulary the extractor
 # is given has to reach the reviewer too.
@@ -186,7 +186,7 @@ REVIEW_ENTITIES_TOOL: dict[str, Any] = {
                             "enum": _ENTITY_TYPE_ENUM,
                             "description": (
                                 "Must be one of these exactly. There is no "
-                                "type for technique patterns or behaviours — "
+                                "type for technique patterns or behaviors — "
                                 "if what you want to add is not one of these, "
                                 "it does not belong in the entity list at all."
                             ),
@@ -275,7 +275,7 @@ def build_entities_turn(state: dict) -> str:
         "  - The wrong specificity: a tool named where a family belongs, a",
         "    generic binary recorded as bespoke malware.",
         "  - author vs publisher on organizations; victim vs origin on locations.",
-        "  - Values that are artefacts of the document rather than the incident",
+        "  - Values that are artifacts of the document rather than the incident",
         "    (page furniture, the vendor's own product names, defanging debris).",
         "  - Entities the report states plainly that are missing entirely.",
         "",
@@ -423,7 +423,7 @@ REVIEW_CHUNKS_TOOL: dict[str, Any] = {
                     "properties": {
                         "text": {
                             "type": "string",
-                            "description": "The behaviour, 1-2 sentences, as the report tells it.",
+                            "description": "The behavior, 1-2 sentences, as the report tells it.",
                         },
                         "source_excerpt": {
                             "type": "string",
@@ -636,7 +636,7 @@ def build_chunks_turn(state: dict) -> str:
         # Deliberately unnumbered. The other three turns use the Python
         # identifiers (gate_0/gate_1/gate_2), and this gate's user-facing
         # number is 1 — which is gate_1's internal number. Either numbering
-        # puts two turns labelled "GATE 1" in one transcript, so this one
+        # puts two turns labeled "GATE 1" in one transcript, so this one
         # goes by name.
         "PROCEDURE REVIEW — HOW THE REPORT WAS SPLIT UP",
         "",
@@ -650,7 +650,7 @@ def build_chunks_turn(state: dict) -> str:
         "that is honestly neither.",
         "",
         "A procedure is a discrete, repeatable technical implementation that",
-        "integrates one or more techniques to fulfil ONE adversarial",
+        "integrates one or more techniques to fulfill ONE adversarial",
         "objective, as an atomic event in the attack. The test for a boundary",
         "is the OBJECTIVE, not the action count: several actions serving one",
         "goal are one procedure; one action serving two goals is two.",
@@ -838,7 +838,7 @@ def _fmt_technique(t: dict, vendor_tids: set[str]) -> str:
 
     # Corroboration by the report's own ATT&CK mapping table. Deliberately
     # NOT treated as proof: a vendor table naming a technique is a claim, not
-    # a witnessed behaviour, which is why that section is excluded from the
+    # a witnessed behavior, which is why that section is excluded from the
     # quote-grounding corpus. It is a strong hint in both directions.
     parent = tid.split(".")[0]
     if tid in vendor_tids:
@@ -898,7 +898,7 @@ def build_procedures_turn(state: dict) -> str:
         "",
         "What goes wrong here most often, in order:",
         "  - A technique that is real in the report but does not serve THIS",
-        "    procedure's objective. It drifted in from a neighbouring",
+        "    procedure's objective. It drifted in from a neighboring",
         "    sentence. Remove it; do not reject the draft over it.",
         "  - Wrong granularity: a sub-technique asserted where only the parent",
         "    is evidenced, or a parent left where the report names the",
@@ -1075,7 +1075,7 @@ def build_bundle_turn(state: dict) -> str:
         "    instrument: procedure -> tool, never the reverse.",
         "  - An edge to an entity the report never connects to this procedure.",
         "    Co-occurrence in a paragraph is not a relationship.",
-        "  - `targets` naming an organisation that is the report's publisher or",
+        "  - `targets` naming an organization that is the report's publisher or",
         "    author rather than a victim.",
         "",
         "=" * 66,

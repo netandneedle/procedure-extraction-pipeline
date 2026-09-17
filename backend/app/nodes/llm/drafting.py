@@ -88,7 +88,7 @@ async def _fetch_feedback_examples(state) -> str:
     """Past analyst corrections most similar to this source, as demonstrations.
 
     A separate channel from `_fetch_feedback_addendum` on purpose: the rules
-    are LLM-written generalisations and the examples are records, they fail in
+    are LLM-written generalizations and the examples are records, they fail in
     different ways, and keeping the fetches apart is what lets an ablation arm
     vary one without the other. Best-effort: "" on any failure.
     """
@@ -241,7 +241,7 @@ DRAFT_PROCEDURES_TOOL = {
                                 "as a possible or additional vector rather than a "
                                 "confirmed one ('we also identified another potential "
                                 "access vector', 'the actors could also have used X'). "
-                                "The behaviour is real enough to model, but the source "
+                                "The behavior is real enough to model, but the source "
                                 "does not claim it happened in THIS intrusion.\n"
                                 "Judge by who is speaking and how certain they are, "
                                 "NOT by how much detail there is — a thinly-described "
@@ -288,7 +288,7 @@ Examples:
 The verb is ALWAYS the ADVERSARY'S action, never the report author's. Never
 name a procedure with a reporting verb — Discuss, Report, Note, Describe,
 Propose, Identify, Assess, Highlight, Observe — those describe what the
-VENDOR did, and the procedure is not about them. Name the behaviour the
+VENDOR did, and the procedure is not about them. Name the behavior the
 adversary performed or would perform.
 
 This applies unchanged when procedure_type is "hypothetical". The uncertainty
@@ -697,7 +697,7 @@ def _ground_command_lines(
 
     The domain rule is "no fabricated command lines": a thin source gets low
     confidence, never an invented command. The prompt says so, but a prompt
-    is advice. This is the check. A command survives when its normalised
+    is advice. This is the check. A command survives when its normalized
     form is a substring of the parsed source text (or of the chunk's own
     text / excerpt, for replayed states that carry no parsed_text), equals
     a captured `ioc_command_line` entity, or near-matches an aligned window

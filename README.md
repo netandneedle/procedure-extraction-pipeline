@@ -1,23 +1,25 @@
 # Procedure Extraction Pipeline
 
-Threat reports in, validated STIX 2.1 bundles out. The pipeline reads a
+The procedure extraction pipeline reads a
 threat-intelligence report, extracts *how* the adversary operated as
-first-class `x-procedure` objects, the layer beneath ATT&CK's *what*, and
+first-class `x-procedure` objects, and
 walks the result past four human review gates before anything ships. The
 output is a self-contained bundle any STIX consumer can read, and,
 optionally, a graph.
+
+The whole pipeline takes inspiration from [Tidal Cyber's procedure modeling methodology](https://www.tidalcyber.com/blog/procedures-make-it-possible) and translates it into a structured machine-readable object in common STIX 2.1 format. Sequencing inside the bundle uses the objects and `precedes` relationships of [MITRE CTID's Attack Flow](https://center-for-threat-informed-defense.github.io/attack-flow/), an open specification, so a bundle reads as an attack chain, not a list.
 
 ![The Explorer's Flow view: one report's procedures in kill-chain order, an OR operator where the source describes a branch, and the selected procedure's techniques, observables and command line on the right](docs/screenshot-explorer.png)
 
 ## Features
 
-- **Four review gates.** Entities, procedures, technique mappings and the
+- **Four Kanban style review gates.** Entities, procedures, technique mappings and the
   final bundle each pause for a human. Every gate can be switched off per
   source, or set to *assist* mode, where an AI reviewer recommends and the
   analyst decides.
-- **ATT&CK v19.2 mapping that cannot invent an ID.** The model proposes, a
+-  ** Direct reference to locally stored ATT&CK v19.2 mapping.** The model proposes, a
   retriever ranks the real catalogue, everything is validated against it, and
-  a second model call picks. Every pick carries a verbatim quote from the
+  a second model call picks, preventing technique hallucination. Every pick carries a verbatim quote from the
   source; a quote that is not in the source demotes the pick.
 - **Attack Flow sequencing.** Procedures carry their order as `PRECEDES`
   relationships, with operator and condition objects where the chain forks,
@@ -34,14 +36,14 @@ optionally, a graph.
 
 ## The procedure object in a nutshell
 
-Everything the pipeline produces hangs off one custom STIX 2.1 object,
+Everything the pipeline produces centers around a custom STIX 2.1 object,
 `x-procedure`. ATT&CK techniques say *what* an adversary did; a procedure says
 *how*, as an object with its own fields rather than a relationship between an
 actor and a technique.
 
 > A procedure is a discrete, repeatable technical implementation that
 > integrates one or more techniques, often spanning multiple tactics, to
-> fulfil a specific adversarial objective as an atomic event within an attack
+> fulfill a specific adversarial objective as an atomic event within an attack
 > sequence.
 
 Names follow `[Verb] [Object] via [Tool/Method]`: `Download web shell via
@@ -59,7 +61,7 @@ A procedure is well-formed when three sets are non-empty, `P = { AP, LS, ⟨C⟩
   `process` per command line the source actually printed, with the binary it
   ran as a `file`.
 
-Every procedure is a unique observation. The same behaviour in two reports is
+Every procedure is a unique observation. The same behavior in two reports is
 two objects with the same name, different ids and different source refs;
 `x_fingerprint` groups them at query time and nothing merges them at write
 time. Abridged from real serializer output on a synthetic fixture:
@@ -103,35 +105,46 @@ from.
 
 ### CTI analysis
 
-Compare *how* across reports, not just *what*. Two vendors describing the same
-behaviour produce two procedures with the same name and fingerprint, each
-keeping its own source, so the graph can answer "which procedures implement
-T1059.001, and what did they touch?" and "which procedures from different
-reports share two or more techniques?" with the Cypher in
-[X_PROCEDURE.md §10](docs/X_PROCEDURE.md#10-in-the-graph). A fingerprint
-match means "worth comparing", not "the same": it hashes techniques,
-platforms and tactics, not the tool or the CVE.
+- Reconstruct an intrusion as the source describes it into a structured attack
+  flow, so the sequence of procedures can be analysed step by step rather than
+  as a flat list of techniques.
+- Compare procedures across intrusions and threat groups: TTP trend analysis,
+  shared choke points, and which behaviors recur regardless of who is behind
+  them.
+- Ask the graph "which procedures implement T1059.001, and what did they
+  touch?" or "which procedures from different reports share two or more
+  techniques?" with the Cypher in
+  [X_PROCEDURE.md §10](docs/X_PROCEDURE.md#10-in-the-graph).
+- Keep every vendor's account separate. Two reports describing the same
+  behavior produce two procedures with the same name and fingerprint, each
+  tied to its own source. A fingerprint match means "worth comparing", not
+  "the same": it hashes techniques, platforms and tactics, not the tool or
+  the CVE.
 
 ### Threat emulation
 
-A bundle reads as an emulation plan. Each procedure's components are `process`
-objects carrying the verbatim command line and the binary it ran; `precedes`
-relationships and `attack-operator` AND/OR nodes give the order and the
-branches. [§12](docs/X_PROCEDURE.md#12-translating-to-attack-flow) maps the
-result onto Attack Flow 2.0 for tools that consume it. The limit is the source:
-no command line is ever fabricated, so a narrative report yields procedures
-with an empty component set and a lower confidence, and a converter script
-does not ship yet.
+- Read a bundle as an emulation plan: each procedure's components are
+  `process` objects carrying the verbatim command line and the binary it ran.
+- Follow the order and the branches: `precedes` relationships give the
+  sequence, and `attack-operator` AND/OR nodes mark where paths split or join.
+- Hand the result to Attack Flow 2.0 tooling using the mapping in
+  [§12](docs/X_PROCEDURE.md#12-translating-to-attack-flow). A converter script
+  does not ship yet.
+- Expect the plan to be only as complete as the source. No command line is
+  ever fabricated, so a narrative report yields procedures with an empty
+  component set and a lower confidence.
 
 ### Detection engineering
 
-Every procedure carries `x_log_source_refs`, ATT&CK's detection chain projected
-onto the behaviour, and its description ends with what a defender monitoring
-the environment would observe. Coverage gaps are modelled, not hidden: a
-procedure whose techniques have no ATT&CK detection coverage is flagged at
-validation. The pipeline does not write Sigma or any other rule; a rule
-describes how to catch a behaviour and has a different owner and lifecycle,
-and this output is the behaviour it should catch.
+- Start from what a defender would see: every procedure's description ends
+  with the observable evidence a monitored environment would produce.
+- Trace each behavior to ATT&CK's detection chain through `x_log_source_refs`,
+  which projects data components and analytics onto the procedure.
+- Find coverage gaps instead of assuming them away: a procedure whose
+  techniques have no ATT&CK detection coverage is flagged at validation.
+- Write the rule yourself. The pipeline does not emit Sigma or any other
+  rule; a rule has a different owner and lifecycle, and this output is the
+  behavior the rule should catch.
 
 ## Prerequisites
 
@@ -155,7 +168,7 @@ scripts/fetch_attack.sh         # ATT&CK Enterprise v19.2 -> data/attack/
 docker compose up -d            # postgres, neo4j, api; the first build takes several minutes
 python3 -m venv .venv && .venv/bin/pip install neo4j   # a venv: system Python 3.12 refuses pip installs (PEP 668)
 .venv/bin/python scripts/load_attack.py --bundle data/attack/enterprise-attack-19.2.json \
-    --uri bolt://localhost:7687 --user neo4j --password "$NEO4J_PASSWORD"
+    --uri bolt://localhost:7687 --user neo4j --password "$(grep '^NEO4J_PASSWORD=' .env | cut -d= -f2-)"
 cd frontend && npm install && npm run dev
 ```
 

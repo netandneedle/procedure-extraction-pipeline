@@ -3,7 +3,7 @@
  *
  * Mirror of the backend's PipelineStatus enum (app/graph/state.py). Every
  * component that needs to know something about a status — which Kanban
- * column it sits in, its label and colour on the card, how far along the
+ * column it sits in, its label and color on the card, how far along the
  * progress bar is, whether the WebSocket should stay open for it, whether
  * the stats bar counts it as processing — derives that from here.
  *
@@ -41,7 +41,7 @@ const NON_GATE_STATUSES = [
   { status: "reviewing_chunks", label: "AI reviewing procedures...", color: PURPLE, progress: 38, column: "procedure_review" },
   { status: "extracting_techniques", label: "Mapping techniques...", color: BLUE, progress: 55, column: "technique_review" },
   // The `procedures` gate key is user-facing "Gate 2 — Techniques"; the
-  // chunk gate is the one analysts call procedure review. Labelling both
+  // chunk gate is the one analysts call procedure review. Labeling both
   // "procedures" would put the same words in two different columns.
   { status: "reviewing_procedures", label: "AI reviewing techniques...", color: PURPLE, progress: 62, column: "technique_review" },
   { status: "drafting", label: "Drafting procedures...", color: BLUE, progress: 65, column: "technique_review" },

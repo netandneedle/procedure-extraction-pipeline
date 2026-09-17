@@ -121,7 +121,7 @@ async def _fetch_feedback_examples(state, *, node: str = "extract_techniques") -
     """Past analyst corrections most similar to this source, as demonstrations.
 
     A separate channel from `_fetch_feedback_addendum` on purpose: the rules
-    are LLM-written generalisations and the examples are records, they fail in
+    are LLM-written generalizations and the examples are records, they fail in
     different ways, and keeping the fetches apart is what lets an ablation arm
     vary one without the other. Best-effort: "" on any failure.
     """
@@ -2241,7 +2241,7 @@ def _format_reference_text(
             "sub-techniques of the same parent. It is NOT evidence on its "
             "own: you still need a source_quote from the chunk, and if the "
             "chunk gives you nothing to quote, say so rather than reaching "
-            "for a neighbouring sub-technique.\n"
+            "for a neighboring sub-technique.\n"
         )
     return header + "\n".join(lines)
 
@@ -2286,7 +2286,7 @@ def _apply_source_quote_cap(
     `source_tokens` should come from `_build_source_grounding_tokens`, which
     excludes the vendor's own ATT&CK mapping table — otherwise a model could
     quote the answer key and call it evidence. Passing None skips the check
-    entirely (the pre-existing two-argument behaviour).
+    entirely (the pre-existing two-argument behavior).
 
     Verbatim_match-provenanced picks are exempt throughout: their grounding
     is the MITRE procedure-example index, not a chunk quote.
@@ -2808,11 +2808,11 @@ def _process_technique_mappings(
     # Coverage reconciliation. The loop above is driven entirely by what the
     # LLM returned, so a chunk the model simply omits never appears — no key,
     # no error, no trace. That is a silent loss in the node that decides what
-    # the bundle says about a behaviour.
+    # the bundle says about a behavior.
     #
     # On one run the picker answered for 28 of 32 chunks and dropped
     # four, whose propose-step objectives had been correct and specific
-    # (Veeam exploitation, Veeam credential harvest, tunnelled C2, cloud
+    # (Veeam exploitation, Veeam credential harvest, tunneled C2, cloud
     # exfiltration). Nothing said so. The pipeline hard-failed three nodes
     # later on a schema error that pointed at the procedure, not the picker.
     #
@@ -2825,7 +2825,7 @@ def _process_technique_mappings(
         logger.warning(
             "extract_techniques: the pick step returned no mapping for %d of "
             "%d chunk(s) — %s. These chunks reached the picker and it did not "
-            "answer for them; their behaviours carry no techniques.",
+            "answer for them; their behaviors carry no techniques.",
             len(missing), len(valid_chunk_ids), ", ".join(missing),
         )
 

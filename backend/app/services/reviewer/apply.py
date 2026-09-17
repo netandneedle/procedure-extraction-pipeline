@@ -34,7 +34,7 @@ THREE RULES, each of which was a bug waiting to happen:
    recommendation and the pipeline is the list of fields each submit item
    declares.
 
-One thing this module converts but does not authorise: a rewind. A Gate 1
+One thing this module converts but does not authorize: a rewind. A Gate 1
 `reject`, or a chunk-gate `reject`, throws a whole pass away and re-enters an
 upstream node, so an unattended agent could loop on it forever. The decision
 is converted here and flagged `AutoSubmission.rewind`; whether it may RUN is
@@ -104,7 +104,7 @@ def _clean(rec: dict[str, Any], keep: tuple[str, ...]) -> dict[str, Any]:
     `quote_unsupported` never appear in a `keep` tuple, so they cannot reach
     pipeline state. There was a second blacklist guard here as well; mutation
     testing showed nothing could make it fire, because `keep` is the only
-    thing this iterates. Two mechanisms where one is real reads as defence in
+    thing this iterates. Two mechanisms where one is real reads as defense in
     depth and is really just the illusion of it.
 
     Whitelist rather than blacklist for the same reason: a new field on a
@@ -280,7 +280,7 @@ def _apply_technique_removals(
         #
         # Refusing keeps the procedure valid and loud. Dropping the procedure
         # instead would be a bigger change than the reviewer asked for: it
-        # said which techniques were wrong, not that the behaviour was not a
+        # said which techniques were wrong, not that the behavior was not a
         # procedure — that is what action="remove" is for.
         logger.warning(
             "auto-apply: refusing to remove %s from draft %s — it would leave "
@@ -299,7 +299,7 @@ def _apply_technique_removals(
 def apply_procedures(
     payload: dict[str, Any], state: dict[str, Any],
 ) -> AutoSubmission:
-    # Needed to honour `remove_technique_ids`: the gate replaces a draft's
+    # Needed to honor `remove_technique_ids`: the gate replaces a draft's
     # technique list wholesale via analyst_edits, so the survivors have to be
     # computed from the draft as it currently stands.
     drafts_by_id = {

@@ -1,7 +1,7 @@
 """FeedbackExample model: the analyst's corrections, kept as records.
 
 WHY THIS EXISTS ALONGSIDE FeedbackPattern:
-A pattern is what an LLM *wrote about* a correction — a generalisation, one
+A pattern is what an LLM *wrote about* a correction — a generalization, one
 step removed from anything that happened. That step is where the damage has
 been: a hand review of the first 63 patterns dropped roughly one in seven as
 simply wrong, and a calibration found that 19 of the 25 rules which

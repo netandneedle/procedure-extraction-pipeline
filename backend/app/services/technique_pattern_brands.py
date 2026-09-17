@@ -130,7 +130,7 @@ def find_brand_techniques(chunk_text: str) -> dict[str, list[str]]:
         chunk_text: The chunk's body text.
 
     Returns:
-        {brand_keyword: [tid, ...]} for every recognised brand mention.
+        {brand_keyword: [tid, ...]} for every recognized brand mention.
         Empty dict when nothing matches or when chunk_text is falsy.
     """
     if not chunk_text:

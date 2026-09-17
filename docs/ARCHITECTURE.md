@@ -59,7 +59,7 @@ The backend node names and the user-facing numbering differ, deliberately:
 | Gate 3 | `gate_2` | the bundle's relationships | `normalize` |
 
 Renaming the nodes would cascade across state fields and around fifty test
-sites for no behavioural gain; the UI layer (`frontend/src/lib/gates.js`)
+sites for no behavioral gain; the UI layer (`frontend/src/lib/gates.js`)
 owns the numbering.
 
 ## Per-gate enable and mode
@@ -208,7 +208,7 @@ never blurs into ATT&CK's own `USES` edges; the bundle stays standard.
 
 `llm_adapter._build_cache_key` hashes the full request. Two shims keep old
 keys reachable: the `provider` key is omitted for Anthropic, and image
-blocks are canonicalised to their original shape. Changing either
+blocks are canonicalized to their original shape. Changing either
 invalidates every cached response; bump `LLM_CACHE_VERSION` in the same
 change. `backend/tests/test_llm_providers.py` pins the format. The system
 prompt is part of the key, so a prompt edit invalidates its own cache

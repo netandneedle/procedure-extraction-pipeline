@@ -232,7 +232,7 @@ def test_watering_hole_is_suggestive():
 
 def test_unknown_brand_defaults_to_suggestive():
     """A future map entry must opt in to definitional treatment rather than
-    inherit the stronger behaviour by omission."""
+    inherit the stronger behavior by omission."""
     from app.services.technique_pattern_brands import SUGGESTIVE, brand_strength
     assert brand_strength("some-new-brand") == SUGGESTIVE
     assert brand_strength("") == SUGGESTIVE

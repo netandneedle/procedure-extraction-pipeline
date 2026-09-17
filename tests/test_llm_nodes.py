@@ -1527,7 +1527,7 @@ class TestApplySourceQuoteCap:
     # The checks above verify the quote against chunk.text, which the LLM
     # wrote. These verify it against the report, which it did not.
 
-    # Synthetic, modelled on a campaign report. The report names the ClickFix brand but
+    # Synthetic, modeled on a campaign report. The report names the ClickFix brand but
     # never describes the copy-paste mechanism.
     REPORT = (
         "UNC0003 deployed a CLICKFIX fake CAPTCHA on compromised websites. "
@@ -1781,7 +1781,7 @@ class TestFormatReferenceText:
 
     def test_unannotated_pool_has_no_bracket_guidance(self):
         """Without annotations the block is byte-for-byte what it always
-        was — no behaviour change for sources with no curated signal."""
+        was — no behavior change for sources with no curated signal."""
         from app.nodes.llm.technique_extraction import _format_reference_text
         pool = {"T1059.001": {"name": "PowerShell", "tactics": ["execution"]}}
         assert _format_reference_text(pool) == _format_reference_text(pool, {})
@@ -1930,7 +1930,7 @@ class TestReconcileCuratedKnowledge:
 
     def test_parent_pick_is_not_treated_as_a_sibling(self):
         """A parent pick is the existing recalibration Rule 1's job; demoting
-        it here would double-penalise a defensible coarse-grained answer."""
+        it here would double-penalize a defensible coarse-grained answer."""
         mappings = {"chk-1": [self._pick("T1204")]}
         demoted, injected = self._run(mappings)
         assert demoted == 0
@@ -3522,7 +3522,7 @@ class TestCommandLineGrounding:
 
     def test_grounding_tolerates_line_breaks_in_parsed_text(self):
         """PDF extraction splits the command across lines; whitespace-
-        normalised matching still finds it with no captured entity."""
+        normalized matching still finds it with no captured entity."""
         from app.nodes.llm.drafting import _ground_command_lines
 
         kept = _ground_command_lines([self.CMD], self._chunk(), self.PARSED, [], "p")

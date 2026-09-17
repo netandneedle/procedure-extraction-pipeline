@@ -35,7 +35,7 @@ FIVE THINGS DIFFER FROM ANTHROPIC IN WAYS THAT BITE:
 
 MODEL IDS ON GATEWAYS: OpenRouter namespaces them (`openai/gpt-5`), Azure
 uses deployment names. Every capability decision below is made on the LAST
-path segment of the ID, so `openai/gpt-5` is recognised as gpt-5. A deployment
+path segment of the ID, so `openai/gpt-5` is recognized as gpt-5. A deployment
 named something unrelated gets the conservative request and a one-time warning.
 """
 

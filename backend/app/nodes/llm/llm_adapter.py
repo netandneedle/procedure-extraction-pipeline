@@ -86,7 +86,7 @@ logger = logging.getLogger(__name__)
 # doesn't cross-contaminate previously-cached responses.
 # `backend/scripts/compare_models.py` is the comparison harness.
 #
-# The current default thinks by default. Three behaviours follow from that
+# The current default thinks by default. Three behaviors follow from that
 # and are handled below / in the provider:
 #   1. `temperature` is REJECTED (400) — see AnthropicProvider.resolve_params,
 #      which drops it on every thinking-capable model.
@@ -209,7 +209,7 @@ def _format_validation_errors(exc: ValidationError) -> str:
 #     candidate pool renders `id | name | tactics`, so a v20 revision that
 #     only rewrites DESCRIPTIONS leaves the key identical while changing what
 #     `_recalibrate_confidence` computes from those descriptions.
-#   - a deliberate re-sample after a model's serving behaviour shifts under a
+#   - a deliberate re-sample after a model's serving behavior shifts under a
 #     stable model ID.
 #
 # There is intentionally no TTL. Expiry re-charges for calls that would

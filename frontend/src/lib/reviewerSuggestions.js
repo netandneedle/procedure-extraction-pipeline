@@ -62,7 +62,7 @@ export function applyRecommendation(decision, rec) {
   if (rec.edited_role) next.edited_role = rec.edited_role;
   // Never overwrite a rationale the analyst typed. Theirs is the more
   // authoritative reason for the decision, and silently replacing text
-  // someone wrote is the surprising behaviour — the same data-loss class
+  // someone wrote is the surprising behavior — the same data-loss class
   // already fixed for technique lists. Fill an empty field only.
   if (rec.rationale && !decision.rationale) next.rationale = rec.rationale;
   return next;

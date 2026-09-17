@@ -344,7 +344,7 @@ def _build_describes_queries(objects: list[dict]) -> list[dict]:
     """Link the Report SDO to everything it contributed.
 
     The bundle's Report already lists every non-relationship object it carries
-    in `object_refs`, so this is provenance that costs no new modelling: one
+    in `object_refs`, so this is provenance that costs no new modeling: one
     hop answers "which report gave us this procedure" and, backwards, "which
     reports does this cluster span" — the question that makes a cross-source
     cluster mean anything. The same edges are the delete set for an undo.

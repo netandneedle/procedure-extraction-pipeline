@@ -24,7 +24,7 @@ its databases.
   the delete path is confined to.
 - **Every identifier is a UUID.** Sources, bundles, threads and patterns
   cannot be enumerated by guessing sequential IDs.
-- **Graph writes are sanitised and reversible.** Cypher labels come from a
+- **Graph writes are sanitized and reversible.** Cypher labels come from a
   fixed table, relationship types are pattern-checked, and every property is
   passed as a parameter. Each report's contribution can be undone with
   `docker compose exec -w /app api python -m scripts.undo_graph_source --report-id <id>`.
@@ -37,7 +37,7 @@ its databases.
 ## What is *not* protected — read this
 
 - **Prompt injection from the source material.** This tool exists to ingest
-  reports about adversary behaviour, which means it feeds adversary-adjacent
+  reports about adversary behavior, which means it feeds adversary-adjacent
   text to a language model and writes the model's output to a database. A
   report crafted to steer the extractor or the AI gate reviewer is a real
   possibility. The mitigations are structural, not complete: every quoted
@@ -54,5 +54,5 @@ its databases.
 ## Reporting a vulnerability
 
 Email **sherman@netandneedle.com** with a description and, if you have one, a
-reproduction. You will get an acknowledgement within a week. Please do not
+reproduction. Please do not
 open a public issue for anything that could be exploited before it is fixed.

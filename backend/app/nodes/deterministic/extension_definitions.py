@@ -61,7 +61,7 @@ def x_procedure_extension_definition() -> dict:
             "implementation of one or more ATT&CK techniques, formalized as the "
             "tuple P = {AP, LS, <C>} of attack patterns, log sources and ordered "
             "component observables. Every x-procedure is a unique observation; "
-            "behaviourally equivalent procedures are grouped at query time by "
+            "behaviorally equivalent procedures are grouped at query time by "
             "x_fingerprint, never merged at creation."
         ),
         "schema": _SCHEMA_URL,

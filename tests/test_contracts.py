@@ -239,7 +239,7 @@ class TestPipelineStatusReachesTheUI:
     """Every backend status must have a home in the frontend.
 
     Regression: PipelineStatus.SYNTHESIZING_FEEDBACK was declared in the enum
-    and mapped by nothing — no Kanban column, no label, no colour, absent from
+    and mapped by nothing — no Kanban column, no label, no color, absent from
     ACTIVE_STATUSES. Nothing failed, because nothing checked.
 
     Second regression: the frontend kept FIVE hand-listed copies
@@ -347,7 +347,7 @@ class TestPipelineStatusReachesTheUI:
 
 
 class TestFeedbackCategoryAreasAgree:
-    """The Feedback tab colours a pattern by its gate area, mirrored from the
+    """The Feedback tab colors a pattern by its gate area, mirrored from the
     backend's _AREA_FOR_CATEGORY. Two copies; this keeps them one."""
 
     def test_frontend_category_area_matches_backend(self):
@@ -395,7 +395,7 @@ class TestGateRegistriesAgree:
         assert js_keys == set(GATE_KEYS), (
             f"gates_enabled keys disagree — backend {sorted(GATE_KEYS)} vs "
             f"frontend {sorted(js_keys)}. The modal would send a dict the API "
-            f"cannot honour."
+            f"cannot honor."
         )
 
     def test_gate_statuses_match(self):
@@ -560,7 +560,7 @@ class TestReviewerRegistriesAgree:
     def test_gate1_reject_reasons_are_routable(self):
         """The reviewer must never emit a reject_reason the gate cannot route.
 
-        A reject_reason the gate does not recognise falls through to
+        A reject_reason the gate does not recognize falls through to
         `_compute_rejection_routing` and routes the rerun somewhere the
         reviewer did not intend — bad_chunk_boundary re-chunks the whole
         source, everything else re-maps techniques.
@@ -617,7 +617,7 @@ class TestReviewerRegistriesAgree:
     def test_chunk_rerun_reasons_match_the_enum(self):
         """Tool schema, Pydantic Literal, and the enum must be one list.
 
-        A reason the gate does not recognise falls through to
+        A reason the gate does not recognize falls through to
         `ChunkGateRejectReason.OTHER`, which strips the hint the re-chunk was
         supposed to carry — the rerun happens, costs a full chunking pass,
         and arrives with no guidance about what was wrong.

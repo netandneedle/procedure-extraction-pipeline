@@ -474,7 +474,7 @@ export default function Gate1Review({
    *
    * Medium and low are deliberately excluded — see the same rule at Gate 0.
    * If one click could accept everything, assist mode becomes autopilot
-   * wearing a human's badge and the override signal never materialises. */
+   * wearing a human's badge and the override signal never materializes. */
   const handleAcceptAI = useCallback(() => {
     (recommendations?.drafts ?? [])
       .filter(isBulkAcceptable)

@@ -2,7 +2,7 @@
  * SuggestionChip — one AI reviewer recommendation, inline on a review card.
  *
  * Shows the recommended action, its confidence, the reason, and the verbatim
- * source quote it rests on. The quote is shown rather than summarised on
+ * source quote it rests on. The quote is shown rather than summarized on
  * purpose: an analyst who can see the evidence can judge the recommendation
  * in a second, and one who cannot is being asked to trust rather than review.
  *

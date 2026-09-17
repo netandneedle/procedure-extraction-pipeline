@@ -290,7 +290,7 @@ async def delete_source(db: AsyncSession, source_id: uuid.UUID) -> bool:
     try:
         from app.api.routes.pipeline import cancel_pipeline_task
         if cancel_pipeline_task(source_id):
-            logger.info("delete_source: cancelled in-flight run for %s", source_id)
+            logger.info("delete_source: canceled in-flight run for %s", source_id)
     except Exception:  # noqa: BLE001 — never block a delete on bookkeeping
         logger.warning(
             "delete_source: could not cancel in-flight run for %s",

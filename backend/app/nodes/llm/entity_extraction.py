@@ -91,7 +91,7 @@ async def _fetch_feedback_examples(state) -> str:
     """Past analyst corrections most similar to this source, as demonstrations.
 
     A separate channel from `_fetch_feedback_addendum` on purpose: the rules
-    are LLM-written generalisations and the examples are records, they fail in
+    are LLM-written generalizations and the examples are records, they fail in
     different ways, and keeping the fetches apart is what lets an ablation arm
     vary one without the other. Best-effort: "" on any failure.
     """
@@ -625,7 +625,7 @@ _IOC_TYPES_FOR_PLACEHOLDER = frozenset({
     EntityType.IOC_COMMAND_LINE.value, EntityType.IOC_MUTEX.value,
 })
 
-# Below this, the model is signalling it is guessing. The audit found a
+# Below this, the model is signaling it is guessing. The audit found a
 # fabricated `victim_sector: financial-services` at 0.3 on a report that
 # names no sector anywhere.
 LOW_CONFIDENCE_FLOOR = 0.4
@@ -762,13 +762,13 @@ def _process_entities(raw_entities: list[dict]) -> list[dict]:
         # Flag sub-threshold entities so gate_0 can default them to
         # remove (the denylist pattern) rather than shipping a guess. The
         # audit found `victim_sector: financial-services` at 0.3 on a report
-        # that names no sector at all — the model was signalling doubt and
+        # that names no sector at all — the model was signaling doubt and
         # nothing downstream acted on it.
         if confidence < LOW_CONFIDENCE_FLOOR:
             entity_dict["low_confidence"] = True
             entity_dict["low_confidence_reason"] = (
                 f"confidence {confidence:.2f} is below the {LOW_CONFIDENCE_FLOOR} "
-                f"floor; the model signalled it was unsure"
+                f"floor; the model signaled it was unsure"
             )
 
         # Preserve organization_role for organization entities. The "author"

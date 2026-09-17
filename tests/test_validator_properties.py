@@ -1,7 +1,7 @@
 """Property tests for the bundle validator.
 
 WHY THIS FILE EXISTS:
-The validator is the last line of defence before a bundle ships, and bundle
+The validator is the last line of defense before a bundle ships, and bundle
 validation is all-or-nothing — if it misses something, the source completes
 and the bad bundle is what you keep. It was tested only with hand-written
 cases, and it turned out to have a hole big enough to drive two

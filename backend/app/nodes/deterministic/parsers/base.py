@@ -182,7 +182,7 @@ class BaseParser(ABC):
                 after = text[end] if end < len(text) else " "
                 if before in "\\/.-_=:" or after in "\\/.-_=:":
                     return word
-            # Preserve the original capitalisation of the first letter.
+            # Preserve the original capitalization of the first letter.
             if word[0].isupper():
                 return fixed[0].upper() + fixed[1:]
             return fixed

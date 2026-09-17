@@ -71,7 +71,7 @@ class _ScriptedGraph:
     Each entry in `pauses` is the `state.next` tuple the runner will observe
     after one astream pass. An empty tuple means the run finished. Records
     every astream input so a test can tell a fresh start (dict) from a resume
-    (None) — that distinction IS the auto-skip behaviour.
+    (None) — that distinction IS the auto-skip behavior.
     """
 
     def __init__(self, values: dict, pauses: list[tuple[str, ...]]):

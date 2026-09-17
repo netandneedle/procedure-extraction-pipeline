@@ -864,7 +864,7 @@ def _sync_embedded_technique_refs(
         # key is ABSENT, so a present-but-null ref returns None and
         # .startswith blows up. A relationship with a null or non-string ref
         # crashed the whole validator here — found by fuzzing.
-        # It is the last line of defence before a bundle ships, so it has to
+        # It is the last line of defense before a bundle ships, so it has to
         # report malformed input, not die on it. The ref-integrity and schema
         # checks flag such an SRO on their own.
         src = obj.get("source_ref")
@@ -1203,7 +1203,7 @@ def _check_post_autofix_schema(objects: list[dict]) -> list[dict]:
     x_procedure_v3.json for x-procedure. See app.services.stix_schema.
 
     Degrades to silence when the schema corpus can't load — that is the
-    documented behaviour of stix_schema.validate_object, and a packaging
+    documented behavior of stix_schema.validate_object, and a packaging
     fault must not fail every bundle.
     """
     corrections: list[dict] = []

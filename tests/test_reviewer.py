@@ -67,7 +67,7 @@ class TestNormalizeGateModes:
 
 
 class TestGateModeBackCompat:
-    """A state with no gate_modes must read as today's behaviour."""
+    """A state with no gate_modes must read as today's behavior."""
 
     @pytest.mark.parametrize("state", [
         {},                                          # brand new
@@ -585,7 +585,7 @@ class TestFlattenedInitialRead:
     def test_the_leaked_parameter_wrapper_is_stripped(self):
         """Shaped like the live run that confirmed the string shape.
 
-        The model's own tool-call serialisation leaked into the value. The
+        The model's own tool-call serialization leaked into the value. The
         prose after it is fine, so the wrapper is stripped rather than the
         read discarded — this text is shown to the analyst AND replayed to
         every later gate, so markup in it is noise in both places.
@@ -632,7 +632,7 @@ class TestFlattenedInitialRead:
 # ── Gate 1: procedures + techniques ──────────────────────────────────
 
 class TestDiffProcedureGate:
-    """Gate 1's diff scores technique judgement separately from the verdict.
+    """Gate 1's diff scores technique judgment separately from the verdict.
 
     "Approve this draft but drop T1105" is two claims. An analyst who keeps
     the draft while restoring the technique agreed with one and overrode the
@@ -1164,7 +1164,7 @@ class TestPipelineTaskCancellation:
         assert cancel_pipeline_task(mine) is True
         await asyncio.sleep(0)
         assert t_mine.cancelled() or t_mine.cancelling()
-        assert not t_theirs.done(), "cancelled an unrelated source's run"
+        assert not t_theirs.done(), "canceled an unrelated source's run"
 
         t_theirs.cancel()
         for t in (t_mine, t_theirs):
@@ -1178,11 +1178,11 @@ class TestPipelineTaskCancellation:
         assert cancel_pipeline_task(uuid.uuid4()) is False
 
     def test_cancellation_escapes_the_runners_error_handler(self):
-        """The property that makes cancelling safe.
+        """The property that makes canceling safe.
 
         `stream_with_sync` catches `Exception` and marks the source failed.
         `CancelledError` derives from `BaseException`, so it slips past —
-        a cancelled run does not leave a 'failed' row behind on its way out.
+        a canceled run does not leave a 'failed' row behind on its way out.
         If that ever changed, deleting a source mid-run would resurrect it
         in the Failed column.
         """
@@ -1203,10 +1203,10 @@ class TestPipelineTaskCancellation:
         import app.services.queue as queue_module
         from app.api.routes import pipeline as pipeline_module
 
-        cancelled: list = []
+        canceled: list = []
         monkeypatch.setattr(
             pipeline_module, "cancel_pipeline_task",
-            lambda sid: cancelled.append(sid) or True,
+            lambda sid: canceled.append(sid) or True,
         )
 
         sid = uuid.uuid4()
@@ -1227,7 +1227,7 @@ class TestPipelineTaskCancellation:
         )
 
         assert await queue_module.delete_source(db, sid) is True
-        assert cancelled == [sid], "delete_source did not cancel the in-flight run"
+        assert canceled == [sid], "delete_source did not cancel the in-flight run"
 
 
 # ── Gate 2: bundle relationships ─────────────────────────────────────

@@ -20,7 +20,7 @@ Design:
 
 This module handles geometry only. Analyst overrides arrive as
 `state["chunk_operators"][op_id]["kind"]` written at gate_chunks and are
-honoured through `existing_operators`.
+honored through `existing_operators`.
 """
 from __future__ import annotations
 

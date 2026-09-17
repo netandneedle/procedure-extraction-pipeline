@@ -44,10 +44,10 @@ about procedures:
 
 > A procedure is a discrete, repeatable technical implementation that
 > integrates one or more techniques, often spanning multiple tactics, to
-> fulfil a specific adversarial objective as an atomic event within an attack
+> fulfill a specific adversarial objective as an atomic event within an attack
 > sequence.
 
-Each clause changed the system's behaviour. *Repeatable* means a procedure is
+Each clause changed the system's behavior. *Repeatable* means a procedure is
 a recipe, not a sighting. *Spanning multiple tactics* is normal, not an error:
 "deploy and operate a remote-access tool" is command-and-control and
 persistence at once, and earlier versions that forced one tactic per
@@ -55,15 +55,15 @@ procedure produced worse output. *A specific adversarial objective* is the
 boundary rule: two objectives means two procedures, however adjacent the
 prose. *Atomic* means irreducible.
 
-Where it sits among neighbouring objects:
+Where it sits among neighboring objects:
 
 | Object | Relationship to `x-procedure` |
 |---|---|
 | `attack-pattern` (ATT&CK technique) | Above it. A procedure implements one or more techniques, referenced by `x_technique_refs` and a `uses` relationship. |
 | `attack-action` (Attack Flow) | A step in a flow. `x-procedure` is a drop-in for it: the same `precedes` sequencing and the same operator and condition objects apply, but the procedure is the reusable intelligence object, not a node in one flow. |
 | STIX Cyber Observables (`process`, `file`, `windows-registry-key`, …) | Below it. The components a procedure is made of, and the observables it touches. Indicators are not used; observables are. |
-| Sigma and other detection rules | Downstream consumers. A rule describes how to catch a behaviour; a procedure describes the behaviour. Different lifecycle, different owner. |
-| CACAO playbooks | An open question; not modelled. |
+| Sigma and other detection rules | Downstream consumers. A rule describes how to catch a behavior; a procedure describes the behavior. Different lifecycle, different owner. |
+| CACAO playbooks | An open question; not modeled. |
 
 ## 2. The tuple
 
@@ -91,7 +91,7 @@ in the serializer) is graded, not absolute:
 |---|---|
 | AP | Error when `confidence ≥ 70`, warning below. A procedure that maps to no technique is not useful. |
 | LS | Warning only when ATT&CK itself has no detection coverage for the procedure's techniques (common in Reconnaissance, Resource Development and Impact); error at `confidence ≥ 70` otherwise. |
-| ⟨C⟩ | Always a warning. Many reports describe behaviour narratively with no command lines; missing components reflect the source, and `confidence` already carries the gap. |
+| ⟨C⟩ | Always a warning. Many reports describe behavior narratively with no command lines; missing components reflect the source, and `confidence` already carries the gap. |
 
 On top of that, the bundle validator applies a stricter, non-negotiable
 contract: `name`, `x_technique_refs` and `x_source_refs` must be non-empty on
@@ -152,7 +152,7 @@ nothing else may appear on the object. `required` is the STIX envelope plus
 
 ## 4. Instance, not template
 
-Every `x-procedure` is a distinct observation. The same behaviour reported by
+Every `x-procedure` is a distinct observation. The same behavior reported by
 two vendors becomes two objects: same name, different ids, different
 `x_source_refs`. There is no deterministic id minting anywhere in the
 pipeline; every id is a fresh `uuid4`, so re-ingesting the same report
@@ -176,7 +176,7 @@ mandate this algorithm; it asks producers for something deterministic and
 documents alternatives.
 
 **Its limits, stated plainly.** The hash groups procedures that are
-behaviourally identical by technique, platform and tactic. That is coarser
+behaviorally identical by technique, platform and tactic. That is coarser
 than it looks. Four real pairs from early runs collided while being things no
 analyst would call the same:
 
@@ -206,14 +206,14 @@ Three rules with reasons:
 
 - **The verb is the adversary's, never the reporter's.** "Discuss", "Report",
   "Note", "Assess" describe what the vendor did. A hypothetical procedure is
-  still named for the behaviour ("Exploit Netlogon Elevation of Privilege via
+  still named for the behavior ("Exploit Netlogon Elevation of Privilege via
   CVE-2020-1472"), with the uncertainty carried by `x_procedure_type`, and
   never hedged in the name with "(Possible)" or "(Speculative)".
 - **No actor names.** Attribution lives on graph edges. The moment an actor's
-  name is in the string, the same behaviour from a different actor becomes a
+  name is in the string, the same behavior from a different actor becomes a
   different object.
-- **Same behaviour, same name.** The name describes the behaviour, not the
-  observation, so two sources' accounts of one behaviour share a name and
+- **Same behavior, same name.** The name describes the behavior, not the
+  observation, so two sources' accounts of one behavior share a name and
   differ by id and source.
 
 **Description.** Flowing prose in three parts, in order: the objective
@@ -226,13 +226,13 @@ monitoring the environment would observe.
 
 ```
 confidence = 0.30 × source reliability
-           + 0.45 × behavioural confidence
+           + 0.45 × behavioral confidence
            + 0.25 × context completeness
 ```
 
 - **Source reliability** (0–100) is set by the analyst at upload: how far they
   trust the publisher.
-- **Behavioural confidence** is the model's own confidence in the chunk the
+- **Behavioral confidence** is the model's own confidence in the chunk the
   procedure came from, scaled to 0–100.
 - **Context completeness** is an additive rubric over the draft: description
   length, presence of command lines, one or more techniques, an observation
@@ -297,7 +297,7 @@ and C converge, `B, C → operator → D`; otherwise `A → B` directly. Procedu
 removed at a gate are spliced out so the chain does not break around them.
 
 None of this is emitted for a source judged **non-sequential**, a threat-actor
-profile or a catalogue with no intrinsic order. That judgement is made at
+profile or a catalogue with no intrinsic order. That judgment is made at
 entity extraction, leans towards "no" when unsure (a false "yes" invents
 structure that looks real), and can be overridden per source. A non-sequential
 bundle is a flat set of procedures, mirroring the source's shape.
@@ -321,7 +321,7 @@ all.
 ## 10. In the graph
 
 When `NEO4J_WRITES_ENABLED=true`, the distributor writes the procedure as a
-node labelled `:Procedure:STIXObject`, keyed by `stix_id`.
+node labeled `:Procedure:STIXObject`, keyed by `stix_id`.
 
 - **Every node the pipeline writes carries `x_ingested_by = 'pipeline'`.**
   Catalogue nodes do not. That marker is the boundary the undo script relies
@@ -451,7 +451,7 @@ Stated so nobody rediscovers them.
 5. **`XOR` is outside Attack Flow's operator enum.** Attack Flow 2.0.0 allows
    `AND` and `OR` only and forbids extra properties on the operator, so an
    analyst-marked exclusive fork is valid here but not there. It is kept
-   because it records the analyst's judgement; §12 gives the translation.
+   because it records the analyst's judgment; §12 gives the translation.
 
 ## 14. A complete example
 
@@ -528,7 +528,7 @@ a definition is a published artifact, not a per-run object.
   "created": "2026-09-12T00:00:00.000Z",
   "modified": "2026-09-12T00:00:00.000Z",
   "name": "x-procedure",
-  "description": "Defines the x-procedure SDO: a discrete, repeatable technical implementation of one or more ATT&CK techniques, formalized as the tuple P = {AP, LS, <C>} of attack patterns, log sources and ordered component observables. Every x-procedure is a unique observation; behaviourally equivalent procedures are grouped at query time by x_fingerprint, never merged at creation.",
+  "description": "Defines the x-procedure SDO: a discrete, repeatable technical implementation of one or more ATT&CK techniques, formalized as the tuple P = {AP, LS, <C>} of attack patterns, log sources and ordered component observables. Every x-procedure is a unique observation; behaviorally equivalent procedures are grouped at query time by x_fingerprint, never merged at creation.",
   "schema": "https://raw.githubusercontent.com/netandneedle/procedure-extraction-pipeline/main/backend/app/schemas/x_procedure_v3.json",
   "version": "0.5.0-draft",
   "extension_types": ["new-sdo"],

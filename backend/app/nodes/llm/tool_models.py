@@ -246,7 +246,7 @@ class ChunkContext(BaseModel):
 
     NOT strict, unlike its siblings, and the sibling right below it says why:
     `artifacts` is "free-form ... new categories are tolerated". `context` is
-    the same kind of thing — descriptive metadata that colours a chunk — and
+    the same kind of thing — descriptive metadata that colors a chunk — and
     it was the only one that could kill a run over it.
 
     On a ransomware run, one chunk of sixteen carried `target_software`

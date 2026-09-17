@@ -2,8 +2,8 @@ import React from "react";
 import { getTypeConfig } from "../lib/bundleGraphConstants";
 
 /**
- * Rounded-square badge with a colored fill and a white MDI glyph,
- * styled to match the OpenCTI "ItemIcon" visual language. Used by the
+ * Rounded-square badge with a colored fill and a white MDI glyph, a
+ * shape STIX analysts already read from other tooling. Used by the
  * React Flow viewers (BundleReviewCanvas, BundleFlowView) and by node
  * labels in the side panels. Canvas-based BundleGraph rasterizes the
  * same MDI paths directly via Path2D instead of mounting this

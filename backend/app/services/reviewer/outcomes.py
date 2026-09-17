@@ -129,7 +129,7 @@ def diff_procedure_gate(
     purpose. "Approve this draft but drop T1105" is two claims, and an
     analyst who keeps the draft while rejecting the removal has agreed with
     one and overridden the other. Collapsing them would hide the disagreement
-    that matters most — the reviewer's technique judgement is the thing Gate 1
+    that matters most — the reviewer's technique judgment is the thing Gate 1
     exists to test.
     """
     by_draft = {

@@ -12,10 +12,11 @@
  * Icons: SVG path strings from @mdi/js (Material Design Icons,
  * Apache 2.0). MDI was picked over @mui/icons-material because it's
  * tree-shakeable raw strings — no MUI peer dep, no Tailwind/MUI theme
- * collision. The icon picks largely mirror OpenCTI's ItemIcon
- * conventions (LockPattern for attack-pattern, Biohazard for malware,
- * ChessKnight for campaign, etc.) so analysts familiar with that tool
- * read our viewers without retraining. The one custom pick is
+ * collision. The glyph choices follow conventions OpenCTI users
+ * already know (LockPattern for attack-pattern, Biohazard for malware,
+ * ChessKnight for campaign, etc.) so analysts read our viewers without
+ * retraining; every glyph is an MDI path and no code from any other
+ * STIX viewer is used. The one custom pick is
  * `mdiPlaylistPlay` for x-procedure — procedures are ordered,
  * executable steps; the playlist-play glyph reads that intent.
  */

@@ -991,7 +991,7 @@ class TestProcedureMatchesDeclaredSchema:
         SCOPE: serializer writes only. Mutations applied AFTER serialization —
         bundle_validator's auto-fix passes — are out of reach of a static scan
         of this module, and one of them (`procedure_tactics_rederived`) is a
-        live example of the same bug class. Those are covered behaviourally by
+        live example of the same bug class. Those are covered behaviorally by
         the golden-replay tests, which re-validate the bundle after
         validate_bundle has had its turn.
         """

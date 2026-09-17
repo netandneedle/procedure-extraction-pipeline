@@ -129,7 +129,7 @@ export const GATE_HINT_TERMS = Object.fromEntries(
 
 /** Ordered review-chip descriptors for StatsBar. `title` is what the compact
  *  G0/G1/G2/G3 label stands for — without it the chips are unreadable to
- *  anyone who has not memorised the numbering. */
+ *  anyone who has not memorized the numbering. */
 export const REVIEW_GATES = GATES.map((g) => ({
   status: g.status,
   label: g.shortLabel,

@@ -14,12 +14,6 @@ Icons community set).
   rasterizes the same paths via `new Path2D()` for canvas-based
   rendering.
 
-Type-to-icon picks mirror OpenCTI's [`ItemIcon.tsx`](https://github.com/OpenCTI-Platform/opencti/blob/master/opencti-platform/opencti-front/src/components/ItemIcon.tsx)
-conventions where possible (e.g. `LockPattern` for attack-pattern,
-`Biohazard` for malware, `ChessKnight` for campaign) so analysts
-familiar with that tool read our viewers without retraining. The one
-custom pick is `mdiPlaylistPlay` for `x-procedure` — procedures are
-ordered, executable steps; the playlist-play glyph reads that intent.
 
 ## IBM Plex Sans and IBM Plex Mono
 
