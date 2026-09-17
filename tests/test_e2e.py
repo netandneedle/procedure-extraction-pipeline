@@ -64,6 +64,39 @@ requires_postgres = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _create_app_tables():
+    """Give a bare database the app's schema before any test touches a row.
+
+    In development the api container runs ``Base.metadata.create_all`` at
+    startup, so the tables are simply there. CI provides an empty Postgres
+    and no running api, and without this every test that writes a source
+    row failed with 'relation "sources" does not exist' while the LLM
+    cache logged a read failure per call. Idempotent (create_all skips
+    tables that exist) and a no-op when Postgres is unreachable, since
+    every test that needs it is already skipped in that case.
+
+    A private engine, not the app's shared one: the shared pool would be
+    bound to this fixture's event loop and the first test to reuse a
+    connection would fail with "attached to a different loop".
+    """
+    if not _pg_available():
+        return
+    from sqlalchemy.ext.asyncio import create_async_engine
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
+
+    async def _create() -> None:
+        eng = create_async_engine(settings.database_url)
+        try:
+            async with eng.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        finally:
+            await eng.dispose()
+
+    asyncio.run(_create())
+
+
 @pytest.fixture(autouse=True)
 async def _dispose_engine_pool_between_tests():
     """Dispose the shared async engine's connection pool after each test.
@@ -473,8 +506,12 @@ class TestE2EPipeline:
             "current_node": "parse_and_validate",
         }
 
-        # Phase 1: Run until gate_0 interrupt
-        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()):
+        # Phase 1: Run until gate_0 interrupt. classify_sections is its own
+        # node ahead of extract_entities and calls chunking's call_llm, so it
+        # needs its own mock — locally the LLM cache table hid that gap by
+        # serving a cached response; CI has no such table.
+        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()), \
+             patch("app.nodes.llm.chunking.call_llm", new_callable=AsyncMock, return_value=_mock_classify()):
             events = []
             async for event in graph.astream(initial_state, config):
                 events.append(event)
@@ -608,8 +645,10 @@ class TestE2EPipeline:
             "current_node": "parse_and_validate",
         }
 
-        # Run until first gate interrupt
-        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()):
+        # Run until first gate interrupt (classify_sections precedes the
+        # entity extractor and has its own call_llm — see test above).
+        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()), \
+             patch("app.nodes.llm.chunking.call_llm", new_callable=AsyncMock, return_value=_mock_classify()):
             async for _ in graph.astream(initial_state, config):
                 pass
 
@@ -640,10 +679,15 @@ class TestE2EPipeline:
             # return non-200 — it does not return at all. Letting that raise
             # made this test fail whenever anything else was running, and it
             # read as a regression in whatever was being built at the time.
+            #
+            # Connection refused (nothing listening, as in CI) is the same
+            # verdict: unreachable, skip. httpx.HTTPError covers both.
             try:
                 health = await client.get("/health")
             except httpx.TimeoutException:
                 pytest.skip("API at localhost:8000 is busy (health check timed out)")
+            except httpx.HTTPError as exc:
+                pytest.skip(f"API not reachable at localhost:8000 ({type(exc).__name__})")
             if health.status_code != 200:
                 pytest.skip("API not reachable at localhost:8000")
 

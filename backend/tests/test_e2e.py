@@ -64,6 +64,39 @@ requires_postgres = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _create_app_tables():
+    """Give a bare database the app's schema before any test touches a row.
+
+    In development the api container runs ``Base.metadata.create_all`` at
+    startup, so the tables are simply there. CI provides an empty Postgres
+    and no running api, and without this every test that writes a source
+    row failed with 'relation "sources" does not exist' while the LLM
+    cache logged a read failure per call. Idempotent (create_all skips
+    tables that exist) and a no-op when Postgres is unreachable, since
+    every test that needs it is already skipped in that case.
+
+    A private engine, not the app's shared one: the shared pool would be
+    bound to this fixture's event loop and the first test to reuse a
+    connection would fail with "attached to a different loop".
+    """
+    if not _pg_available():
+        return
+    from sqlalchemy.ext.asyncio import create_async_engine
+    import app.models  # noqa: F401 — registers every table on Base.metadata
+    from app.models.base import Base
+
+    async def _create() -> None:
+        eng = create_async_engine(settings.database_url)
+        try:
+            async with eng.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        finally:
+            await eng.dispose()
+
+    asyncio.run(_create())
+
+
 @pytest.fixture(autouse=True)
 async def _dispose_engine_pool_between_tests():
     """Dispose the shared async engine's connection pool after each test.
@@ -433,7 +466,10 @@ class TestE2EPipeline:
         }
 
         # Phase 1: Run until gate_0 interrupt
-        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()):
+        # classify_sections is its own node ahead of extract_entities and calls
+        # chunking's call_llm; the LLM cache table hid the missing mock locally.
+        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()), \
+             patch("app.nodes.llm.chunking.call_llm", new_callable=AsyncMock, return_value=_mock_classify()):
             events = []
             async for event in graph.astream(initial_state, config):
                 events.append(event)
@@ -544,7 +580,8 @@ class TestE2EPipeline:
         }
 
         # Run until first gate interrupt
-        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()):
+        with patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock, return_value=_mock_entities()), \
+             patch("app.nodes.llm.chunking.call_llm", new_callable=AsyncMock, return_value=_mock_classify()):
             async for _ in graph.astream(initial_state, config):
                 pass
 
@@ -567,8 +604,12 @@ class TestE2EPipeline:
         base = "http://localhost:8000"
 
         async with httpx.AsyncClient(base_url=base, timeout=10, follow_redirects=True) as client:
-            # Health check first
-            health = await client.get("/health")
+            # Health check first. A timeout or a refused connection (nothing
+            # listening, as in CI) both mean "unreachable": skip, not fail.
+            try:
+                health = await client.get("/health")
+            except httpx.HTTPError as exc:
+                pytest.skip(f"API not reachable at localhost:8000 ({type(exc).__name__})")
             if health.status_code != 200:
                 pytest.skip("API not reachable at localhost:8000")
 
