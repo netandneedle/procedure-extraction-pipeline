@@ -2119,6 +2119,44 @@ class TestRouteAfterParse:
         assert edges[("parse_and_validate", "__end__")] is True
 
 
+class TestRouteUnlessFailed:
+    """The soft-failing LLM nodes end the run on status=failed instead of
+    flowing into a gate that overwrites the status. One malformed item of
+    181 once failed entity extraction; gate_0 then paused on an empty list
+    with an Approve button and the failure read as a thin source."""
+
+    def test_failed_routes_to_end(self):
+        from app.graph.pipeline import route_unless_failed
+        route = route_unless_failed("gate_0")
+        state = {"status": PipelineStatus.FAILED.value,
+                 "error": "Entity extraction failed: LLMValidationError: ...",
+                 "entities": []}
+        assert route(state) == "__end__"
+
+    def test_success_routes_to_next_node(self):
+        from app.graph.pipeline import route_unless_failed
+        route = route_unless_failed("gate_0")
+        state = {"status": PipelineStatus.EXTRACTING_ENTITIES.value,
+                 "entities": [{"value": "x"}]}
+        assert route(state) == "gate_0"
+
+    def test_router_name_says_where_it_goes(self):
+        from app.graph.pipeline import route_unless_failed
+        assert route_unless_failed("gate_1").__name__ == "route_unless_failed_to_gate_1"
+
+    def test_graph_edges_are_conditional(self):
+        from app.graph.pipeline import compile_pipeline
+        graph = compile_pipeline().get_graph()
+        edges = {(e.source, e.target): e.conditional for e in graph.edges}
+        for node, next_node in (
+            ("extract_entities", "gate_0"),
+            ("extract_techniques", "draft_procedures"),
+            ("draft_procedures", "gate_1"),
+        ):
+            assert edges[(node, next_node)] is True, (node, next_node)
+            assert edges[(node, "__end__")] is True, node
+
+
 class TestRouteAfterGateChunks:
     """route_after_gate_chunks branches on chunks_rejection_routing."""
 

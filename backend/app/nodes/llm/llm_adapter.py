@@ -25,10 +25,17 @@ an array whose elements are bare strings where objects were asked for, or
 omit a required field. Callers that read raw.get(...) off such output crash
 unpredictably. Pass an output_model (Pydantic v2 BaseModel) and the adapter
 will:
-1. Validate the tool_output against it.
-2. On ValidationError, send a correction message back to Claude with the
-   validation errors and retry once.
-3. If the retry also fails validation, raise LLMValidationError.
+1. Repair two shapes deterministically first: a single-key wrapper around
+   the whole input is unwrapped, and stringified collection fields are
+   parsed.
+2. Validate the tool_output against it.
+3. On a ValidationError confined to items of a list field, drop those
+   items (capped at a quarter of the list, logged, reported on
+   LLMResponse.dropped_items) and accept the rest. One bad row must not
+   cost the pass.
+4. On any other ValidationError, send a correction message back to Claude
+   with the validation errors and retry once.
+5. If the retry also fails validation, raise LLMValidationError.
 
 Callers that don't pass output_model get the old behavior (raw dict,
 no validation).
@@ -135,6 +142,13 @@ DEFAULT_VALIDATION_RETRIES = 1
 # to preserve structure hints without risk.
 _CORRECTION_PAYLOAD_MAX_CHARS = 2000
 
+# A malformed item in a list field is dropped rather than failing the response,
+# but only while the bad rows are a small minority. More than a quarter of a
+# list mis-shaped is not one bad row, it is a systematically wrong shape --
+# the correction-and-retry path has a real chance at that, and quietly gutting
+# the list does not. See _salvage_list_items.
+_SALVAGE_MAX_DROP_FRACTION = 0.25
+
 
 @dataclass
 class LLMResponse:
@@ -160,6 +174,11 @@ class LLMResponse:
         cached: True if this response was served from the LLM cache (no API
             call billed for THIS invocation; token counts reflect the
             original call that populated the entry).
+        dropped_items: Malformed list items the adapter dropped to make the
+            response validate — one record per item, ``{field, index,
+            error_types}``, never the item itself. Empty on the happy path
+            and on cache hits (the warning was logged when the entry was
+            written). See _salvage_list_items.
     """
     tool_output: dict = field(default_factory=dict)
     validated: BaseModel | None = None
@@ -178,6 +197,7 @@ class LLMResponse:
     stop_reason: str = ""
     attempts: int = 1
     cached: bool = False
+    dropped_items: list[dict] = field(default_factory=list)
 
 
 def _format_validation_errors(exc: ValidationError) -> str:
@@ -433,6 +453,130 @@ def _coerce_json_string_fields(raw: Any, model: type[BaseModel]) -> Any:
     return coerced if coerced is not None else raw
 
 
+def _unwrap_single_key_wrapper(raw: Any, model: type[BaseModel]) -> Any:
+    """Unwrap a tool_use input the model nested one level too deep.
+
+    Seen live on a 63k-char report: the model returned
+    ``{"params": {"entities": [...], "detection_rules": [...]}}`` instead of
+    the flat object the tool schema asks for. Every required field then reads
+    as missing, the wrapper key as forbidden, and a full regeneration is
+    spent on something a dict lookup fixes.
+
+    Unwrap only when the shape is unambiguous: exactly one key, that key is
+    not a field of ``model``, its value is a dict, and that dict shares at
+    least one key with ``model``. Anything else is left for Pydantic.
+    """
+    if not isinstance(raw, dict) or len(raw) != 1:
+        return raw
+    ((key, inner),) = raw.items()
+    fields = model.model_fields
+    if key in fields or not isinstance(inner, dict):
+        return raw
+    if not (set(inner) & set(fields)):
+        return raw
+    logger.warning(
+        "call_llm: unwrapped single-key '%s' wrapper on %s before validate",
+        key, model.__name__,
+    )
+    return inner
+
+
+def _salvage_list_items(
+    raw: Any, model: type[BaseModel], exc: ValidationError,
+) -> tuple[dict, list[dict]] | None:
+    """Drop malformed items from list fields instead of rejecting the response.
+
+    A hundred-entity report once lost every entity to one item shaped
+    ``{"<name>": "placeholder"}`` -- no value, no type, no confidence --
+    because Pydantic rejects the whole payload and the retry budget is one.
+    ``DetectionRuleItem.rule_type`` and ``ChunkContext`` in tool_models.py
+    record two earlier incidents of the same class, each fixed by loosening
+    one field. This is the general fix, at the layer every node shares.
+
+    Returns ``(salvaged_raw, dropped)`` when every error is confined to items
+    of top-level list fields, or ``None`` when the response belongs on the
+    retry path instead:
+
+    * any error outside a list item (a missing top-level field, a wrong
+      scalar) is structural -- a correction message can fix that, dropping
+      cannot;
+    * a list that would lose more than ``_SALVAGE_MAX_DROP_FRACTION`` of its
+      items is systematically mis-shaped, not one bad row.
+
+    ``dropped`` records field, index and the pydantic error types only --
+    never the item, which may carry source-document content.
+    """
+    if not isinstance(raw, dict):
+        return None
+    fields = model.model_fields
+    bad: dict[str, set[int]] = {}
+    error_types: dict[tuple[str, int], set[str]] = {}
+    for err in exc.errors():
+        loc = err.get("loc", ())
+        if (
+            len(loc) < 2
+            or not isinstance(loc[0], str)
+            or not isinstance(loc[1], int)
+            or loc[0] not in fields
+            or not _expects_collection(fields[loc[0]].annotation)
+            or not isinstance(raw.get(loc[0]), list)
+        ):
+            return None  # structural: not an item of a list field
+        bad.setdefault(loc[0], set()).add(loc[1])
+        error_types.setdefault((loc[0], loc[1]), set()).add(str(err.get("type", "?")))
+    if not bad:
+        return None
+
+    salvaged = dict(raw)
+    dropped: list[dict] = []
+    for field_name, indices in bad.items():
+        items = raw[field_name]
+        if len(indices) > len(items) * _SALVAGE_MAX_DROP_FRACTION:
+            return None
+        salvaged[field_name] = [
+            item for i, item in enumerate(items) if i not in indices
+        ]
+        for i in sorted(indices):
+            dropped.append({
+                "field": field_name,
+                "index": i,
+                "error_types": sorted(error_types[(field_name, i)]),
+            })
+        logger.warning(
+            "call_llm: salvaged %s.%s -- dropped %d of %d item(s) at indices %s "
+            "error_types=%s; the rest of the list was kept",
+            model.__name__, field_name, len(indices), len(items),
+            sorted(indices),
+            sorted({t for i in indices for t in error_types[(field_name, i)]}),
+        )
+    return salvaged, dropped
+
+
+def _validate_with_salvage(
+    raw: Any, model: type[BaseModel],
+) -> tuple[BaseModel, Any, list[dict]]:
+    """model_validate, salvaging malformed list items on the way.
+
+    Returns ``(validated, output, dropped)`` where ``output`` is what actually
+    validated (``raw`` itself, or its salvaged copy). Raises the ORIGINAL
+    ValidationError when nothing could be salvaged or the salvaged payload
+    still fails -- one salvage per attempt, and the retry's correction
+    message should describe what the model actually sent.
+    """
+    try:
+        return model.model_validate(raw), raw, []
+    except ValidationError as exc:
+        salvage = _salvage_list_items(raw, model, exc)
+        if salvage is None:
+            raise
+        salvaged, dropped = salvage
+        try:
+            validated = model.model_validate(salvaged)
+        except ValidationError:
+            raise exc from None
+        return validated, salvaged, dropped
+
+
 def _build_correction_message(tool_name: str, bad_output: dict, exc: ValidationError) -> dict:
     """Construct a user-role message asking Claude to retry the tool call.
 
@@ -512,9 +656,14 @@ async def call_llm(
             rejects any value but 1 while thinking is on. See
             AnthropicProvider.resolve_params.
         output_model: Optional Pydantic v2 BaseModel subclass. When provided,
-            the tool_output is validated against it; ValidationError triggers
-            one retry (by default) with a correction message. If still invalid,
-            LLMValidationError is raised.
+            the tool_output is validated against it. Before validation a
+            single-key wrapper around the input is unwrapped and stringified
+            collection fields are parsed; on failure a malformed item in a
+            list field is dropped (see _salvage_list_items, capped at a
+            quarter of the list, reported on LLMResponse.dropped_items).
+            Any other ValidationError triggers one retry (by default) with a
+            correction message. If still invalid, LLMValidationError is
+            raised.
         validation_retries: How many times to retry on validation failure.
             Default 1 (so 2 total API calls worst case). Set to 0 to disable
             retry and raise on first validation failure.
@@ -692,9 +841,19 @@ async def call_llm(
                 attempts=attempt,
             )
 
-        coerced_output = _coerce_json_string_fields(last_tool_output, output_model)
+        # Two deterministic repairs before validation, both cheaper than the
+        # retry they pre-empt: a single-key wrapper around the whole input is
+        # unwrapped, and stringified collection fields are parsed. A third
+        # runs on failure -- a malformed item in a list field is dropped
+        # (capped, logged) rather than failing the whole response.
+        coerced_output = _coerce_json_string_fields(
+            _unwrap_single_key_wrapper(last_tool_output, output_model),
+            output_model,
+        )
         try:
-            validated = output_model.model_validate(coerced_output)
+            validated, coerced_output, dropped_items = _validate_with_salvage(
+                coerced_output, output_model,
+            )
         except ValidationError as exc:
             last_validation_exc = exc
             # Never values — raw output may carry source-document content.
@@ -766,6 +925,7 @@ async def call_llm(
             cache_read_tokens=total_cache_read,
             stop_reason=last_stop_reason,
             attempts=attempt,
+            dropped_items=dropped_items,
         )
 
     # Ran out of attempts with validation still failing.

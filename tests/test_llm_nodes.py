@@ -181,6 +181,36 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     @patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock)
+    async def test_adapter_dropped_items_are_logged_not_fatal(self, mock_call, caplog):
+        """When the adapter salvaged the response by dropping a malformed
+        item, the node keeps the survivors and says how many were dropped
+        next to its own count. One bad row of 181 once cost the whole list."""
+        response = _mock_llm_response({
+            "entities": [
+                {"value": "APT29", "entity_type": "intrusion_set", "confidence": 0.95},
+                {"value": "203.0.113.10", "entity_type": "ioc_ip", "confidence": 1.0},
+            ],
+            "detection_rules": [],
+        })
+        response.dropped_items = [
+            {"field": "entities", "index": 179, "error_types": ["extra_forbidden", "missing"]},
+        ]
+        mock_call.return_value = response
+
+        state = {"parsed_text": "APT29 used ...", "metadata": {}}
+        with caplog.at_level("WARNING", logger="app.nodes.llm.entity_extraction"):
+            result = await extract_entities(state)
+
+        assert result["status"] == PipelineStatus.EXTRACTING_ENTITIES.value
+        assert [e["value"] for e in result["entities"]] == ["APT29", "203.0.113.10"]
+        assert "error" not in result
+        assert any(
+            "dropped 1 malformed item(s) from ['entities']" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    @patch("app.nodes.llm.entity_extraction.call_llm", new_callable=AsyncMock)
     async def test_empty_text_fails(self, mock_call):
         """Empty parsed_text returns FAILED."""
         state = {"parsed_text": "", "metadata": {}}

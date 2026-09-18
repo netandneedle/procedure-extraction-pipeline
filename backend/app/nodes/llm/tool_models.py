@@ -79,6 +79,12 @@ class DetectionRuleItem(_StrictBase):
     # disagreed about how much one junk rule should cost, and the fatal one won.
     # Same principle as ChunkContext below: one odd key must not cost a whole
     # pass.
+    #
+    # The general fix for this class now lives in the adapter: a malformed
+    # LIST ITEM is dropped on its own (see _salvage_list_items in
+    # llm_adapter.py), so one bad rule or entity costs that row, not the
+    # pass. This field stays `str` regardless -- the enum bought nothing
+    # that _process_detection_rules does not already do.
     rule_type: str
     rule_content: str
     description: str | None = None

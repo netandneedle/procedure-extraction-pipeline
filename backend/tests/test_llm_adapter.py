@@ -9,6 +9,7 @@ Run:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure backend is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
@@ -30,6 +31,8 @@ from app.nodes.llm.llm_adapter import (  # noqa: E402
     LLMResponse,
     _coerce_json_string_fields,
     _expects_collection,
+    _salvage_list_items,
+    _unwrap_single_key_wrapper,
     call_llm,
 )
 from app.nodes.llm.providers import reset_provider_cache  # noqa: E402
@@ -894,3 +897,201 @@ async def test_truncated_tool_call_is_not_retried(fake_client, fake_cache):
         await call_llm(**_default_call_args(), validation_retries=1)
 
     assert fake_client.messages.create.call_count == 1
+
+
+# =============================================================================
+# Deterministic repairs before retry: wrapper unwrap + list-item salvage
+#
+# Both shapes were seen live on one 63k-char report. Attempt 1 nested the
+# whole input under "params"; attempt 2 carried ~180 valid entities and one
+# item shaped {"<name>": "placeholder"}. Together they exhausted the retry
+# budget and the node lost every entity.
+# =============================================================================
+
+
+class _Item(_Strict):
+    name: str
+    score: float = Field(ge=0.0, le=1.0)
+
+
+class _ListOutput(_Strict):
+    """Mirrors ExtractEntitiesOutput: strict item objects in a list, a
+    scalar alongside."""
+
+    items: list[_Item]
+    count: int = Field(ge=0)
+
+
+def _items(n: int) -> list[dict]:
+    return [{"name": f"item-{i}", "score": 0.5} for i in range(n)]
+
+
+def test_unwrap_single_key_wrapper_unwraps_params():
+    raw = {"params": {"items": _items(2), "count": 2}}
+    assert _unwrap_single_key_wrapper(raw, _ListOutput) == raw["params"]
+
+
+def test_unwrap_leaves_single_model_field_alone():
+    """A one-key dict whose key IS a field is a partial payload, not a
+    wrapper -- Pydantic should report the missing fields."""
+    raw = {"items": _items(2)}
+    assert _unwrap_single_key_wrapper(raw, _ListOutput) is raw
+
+
+def test_unwrap_leaves_multi_key_dict_alone():
+    raw = {"params": {"items": []}, "extra": 1}
+    assert _unwrap_single_key_wrapper(raw, _ListOutput) is raw
+
+
+def test_unwrap_leaves_unrelated_inner_dict_alone():
+    """The inner dict shares no key with the model: not a wrapper we can
+    recognise, so leave it for the validation error."""
+    raw = {"params": {"foo": 1}}
+    assert _unwrap_single_key_wrapper(raw, _ListOutput) is raw
+
+
+async def test_call_llm_unwraps_wrapper_without_retry(fake_client):
+    """The live attempt-1 shape. One API call, validated, tool_output is
+    the inner dict."""
+    inner = {"items": _items(3), "count": 3}
+    fake_client.messages.create.return_value = _make_anthropic_response({"params": inner})
+
+    resp = await call_llm(**_default_call_args(), output_model=_ListOutput)
+
+    assert fake_client.messages.create.call_count == 1
+    assert resp.attempts == 1
+    assert resp.tool_output == inner
+    assert resp.validated.count == 3
+    assert resp.dropped_items == []
+
+
+async def test_call_llm_salvages_one_bad_item_without_retry(fake_client):
+    """The live attempt-2 shape: one item {"<name>": "placeholder"} in an
+    otherwise valid list. The row is dropped; nothing is regenerated."""
+    items = _items(10)
+    items[7] = {".NET payload": "placeholder"}
+    fake_client.messages.create.return_value = _make_anthropic_response(
+        {"items": items, "count": 10}
+    )
+
+    resp = await call_llm(**_default_call_args(), output_model=_ListOutput)
+
+    assert fake_client.messages.create.call_count == 1
+    assert resp.attempts == 1
+    assert [i["name"] for i in resp.tool_output["items"]] == [
+        f"item-{i}" for i in range(10) if i != 7
+    ]
+    assert len(resp.validated.items) == 9
+    assert len(resp.dropped_items) == 1
+    dropped = resp.dropped_items[0]
+    assert dropped["field"] == "items"
+    assert dropped["index"] == 7
+    assert "missing" in dropped["error_types"]
+    assert "extra_forbidden" in dropped["error_types"]
+
+
+def test_dropped_items_carry_no_values():
+    """The dropped record is field/index/error_types only. Raw output may
+    carry source-document content, and this record gets logged."""
+    raw = {"items": _items(8), "count": 8}
+    raw["items"][2] = {"name": "secret-value", "score": 7.0}
+    with pytest.raises(ValidationError) as ei:
+        _ListOutput.model_validate(raw)
+
+    result = _salvage_list_items(raw, _ListOutput, ei.value)
+
+    assert result is not None
+    salvaged, dropped = result
+    assert dropped == [{"field": "items", "index": 2, "error_types": ["less_than_equal"]}]
+    assert "secret-value" not in json.dumps(dropped)
+    assert len(salvaged["items"]) == 7
+    assert raw["items"][2]["name"] == "secret-value"  # input not mutated
+
+
+async def test_salvage_refuses_when_over_cap(fake_client):
+    """4 of 10 bad is a mis-shaped list, not one bad row: the correction
+    message has a real chance at that, dropping would gut the result."""
+    items = _items(10)
+    for i in (1, 3, 5, 7):
+        items[i] = {"bogus": True}
+    good = {"items": _items(10), "count": 10}
+    fake_client.messages.create.side_effect = [
+        _make_anthropic_response({"items": items, "count": 10}),
+        _make_anthropic_response(good),
+    ]
+
+    resp = await call_llm(
+        **_default_call_args(), output_model=_ListOutput, validation_retries=1,
+    )
+
+    assert fake_client.messages.create.call_count == 2
+    assert resp.attempts == 2
+    assert resp.tool_output == good
+    assert resp.dropped_items == []
+
+
+async def test_salvage_refuses_structural_error(fake_client):
+    """A bad item plus a missing top-level field: dropping the item cannot
+    make the payload valid, so the correction message goes out."""
+    items = _items(10)
+    items[0] = {"bogus": True}
+    good = {"items": _items(2), "count": 2}
+    fake_client.messages.create.side_effect = [
+        _make_anthropic_response({"items": items}),  # no count
+        _make_anthropic_response(good),
+    ]
+
+    resp = await call_llm(
+        **_default_call_args(), output_model=_ListOutput, validation_retries=1,
+    )
+
+    assert fake_client.messages.create.call_count == 2
+    assert resp.tool_output == good
+    assert resp.dropped_items == []
+
+
+def test_salvage_refuses_when_list_would_be_emptied():
+    raw = {"items": [{"bogus": True}], "count": 1}
+    with pytest.raises(ValidationError) as ei:
+        _ListOutput.model_validate(raw)
+    assert _salvage_list_items(raw, _ListOutput, ei.value) is None
+
+
+async def test_salvage_on_retry_attempt(fake_client):
+    """Attempt 1 structural (retry); attempt 2 one bad row (salvage). The
+    two repairs compose across attempts."""
+    items = _items(10)
+    items[9] = "just a string"
+    fake_client.messages.create.side_effect = [
+        _make_anthropic_response({"items": "not-a-list", "count": 1}),
+        _make_anthropic_response({"items": items, "count": 10}),
+    ]
+
+    resp = await call_llm(
+        **_default_call_args(), output_model=_ListOutput, validation_retries=1,
+    )
+
+    assert resp.attempts == 2
+    assert len(resp.tool_output["items"]) == 9
+    assert resp.dropped_items == [{"field": "items", "index": 9, "error_types": ["model_type"]}]
+
+
+async def test_salvaged_output_is_what_gets_cached(fake_client, fake_cache):
+    """The cache holds the salvaged list, and a hit re-validates cleanly
+    with nothing to report."""
+    items = _items(10)
+    items[4] = {"bogus": True}
+    fake_client.messages.create.return_value = _make_anthropic_response(
+        {"items": items, "count": 10}
+    )
+
+    resp = await call_llm(**_default_call_args(), output_model=_ListOutput)
+    cached_payload = next(iter(fake_cache.store.values()))
+    assert cached_payload["tool_output"] == resp.tool_output
+    assert len(cached_payload["tool_output"]["items"]) == 9
+
+    resp2 = await call_llm(**_default_call_args(), output_model=_ListOutput)
+    assert resp2.cached is True
+    assert fake_client.messages.create.call_count == 1
+    assert resp2.dropped_items == []
+    assert isinstance(resp2.validated, _ListOutput)

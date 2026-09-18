@@ -225,17 +225,20 @@ class TestGraphStructure:
         assert start_edges[0].target == "parse_and_validate"
 
     def test_end_point_is_synthesize_feedback(self):
-        """Graph ends after synthesize_feedback in the success path. Three
+        """Graph ends after synthesize_feedback in the success path. Six
         hard-fail paths also route to END: parse_and_validate (missing or
-        unparseable file), chunk_behaviors (chunking hard-fail, skips
-        gate_chunks — Batch H category B) and validate_bundle (bundle
-        integrity failure, skips distribute). So four END edges."""
+        unparseable file), validate_bundle (bundle integrity failure, skips
+        distribute), and every LLM node that catches its own exception and
+        reports status=failed on the update — chunk_behaviors,
+        extract_entities, extract_techniques, draft_procedures — so the
+        gate downstream never overwrites the failure. Seven END edges."""
         compiled = compile_pipeline()
         graph = compiled.get_graph()
         end_sources = {e.source for e in graph.edges if e.target == "__end__"}
         assert end_sources == {
             "synthesize_feedback", "validate_bundle", "chunk_behaviors",
-            "parse_and_validate",
+            "parse_and_validate", "extract_entities", "extract_techniques",
+            "draft_procedures",
         }
 
     def test_sequential_edges(self):
@@ -254,12 +257,12 @@ class TestGraphStructure:
             # (failed parse ends the run), so it's not in the sequential set.
             ("extract_figures", "classify_sections"),
             ("classify_sections", "extract_entities"),
-            ("extract_entities", "gate_0"),
+            # extract_entities -> (gate_0 | END), extract_techniques ->
+            # (draft_procedures | END) and draft_procedures -> (gate_1 | END)
+            # are conditional (route_unless_failed), so not in this set.
             ("gate_0", "chunk_behaviors"),
             # chunk_behaviors -> (gate_chunks | END) is now conditional
             # (Batch H category B), so it's not in the sequential set.
-            ("extract_techniques", "draft_procedures"),
-            ("draft_procedures", "gate_1"),
             ("normalize", "gate_2"),
             ("serialize_stix", "validate_bundle"),
             # validate_bundle has conditional routing (distribute | END)

@@ -523,6 +523,18 @@ async def extract_entities(state: PipelineState) -> dict:
             output_model=ExtractEntitiesOutput,
         )
 
+        # The adapter drops a malformed list item rather than failing the
+        # whole response (one of 181 entities once cost every entity in the
+        # report). Say so here, next to the count, so a short list can be
+        # read against what was thrown away.
+        if response.dropped_items:
+            logger.warning(
+                "extract_entities: adapter dropped %d malformed item(s) from %s "
+                "-- the rest of the list was kept",
+                len(response.dropped_items),
+                sorted({d["field"] for d in response.dropped_items}),
+            )
+
         # Process entities from tool output
         raw_entities = response.tool_output.get("entities", [])
         entities = _process_entities(raw_entities)

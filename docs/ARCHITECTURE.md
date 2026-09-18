@@ -40,8 +40,13 @@ call.
 module per vendor (`anthropic`, `openai`), selected by `settings.llm_provider`.
 The provider owns wire format only. The response cache, Pydantic validation
 with bounded retry, the refusal retry and token accounting live in the
-adapter and are not duplicated per provider. A provider must be able to
-force a named tool call and accept image input.
+adapter and are not duplicated per provider. Before a retry is spent the
+adapter repairs two model-output faults deterministically: a single-key
+wrapper around the tool input is unwrapped, and a malformed item in a list
+field is dropped (capped at a quarter of the list, logged with field, index
+and error types only, reported on `LLMResponse.dropped_items`). One bad row
+must not cost the pass; a new tool model gets this for free. A provider must
+be able to force a named tool call and accept image input.
 
 **Gates** (`backend/app/nodes/gates.py`): `gate_0` (entities),
 `gate_chunks` (chunks, which are the procedures), `gate_1` (technique
@@ -89,6 +94,11 @@ Only at gates and hard-fail guards:
 - after `chunk_behaviors`: status `failed` → END (zero chunks or a validation
   failure must not reach a gate that would auto-approve an empty list);
   otherwise → `gate_chunks`
+- after `extract_entities`, `extract_techniques` and `draft_procedures`: status
+  `failed` → END (`route_unless_failed`). These nodes catch their own
+  exceptions and report the failure on the update; the gate downstream would
+  otherwise overwrite it and pause on empty output — one malformed item of
+  181 once surfaced as Gate 0 with zero entities and an Approve button
 - after `gate_chunks`: reject → `chunk_behaviors`; otherwise → `extract_techniques`
 - after `gate_1`: `BAD_CHUNK_BOUNDARY` → `chunk_behaviors`; any other
   rejection → `extract_techniques`; otherwise → `normalize`. Bad chunking

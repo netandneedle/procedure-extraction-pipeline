@@ -32,6 +32,10 @@ CONDITIONAL ROUTING (only at gates and hard-fail guards):
 - After chunk_behaviors: status == failed -> END (zero chunks or a
   validation failure must not flow into a gate that would auto-approve
   the empty list); otherwise -> gate_chunks.
+- After extract_entities, extract_techniques and draft_procedures: status ==
+  failed -> END (route_unless_failed). These nodes catch their own
+  exceptions and report the failure on the update; the gate downstream
+  would otherwise overwrite it and pause on empty output.
 - After gate_chunks: reject -> chunk_behaviors; otherwise -> extract_techniques.
 - After gate_1: a BAD_CHUNK_BOUNDARY rejection -> chunk_behaviors; any other
   rejection -> extract_techniques; otherwise -> normalize. Bad chunking wins,
@@ -91,6 +95,33 @@ def route_after_parse(state: PipelineState) -> str:
     if state.get("status") == PipelineStatus.FAILED.value:
         return "__end__"
     return "extract_figures"
+
+
+def route_unless_failed(next_node: str):
+    """Build a hard-fail guard for a node that catches its own exceptions.
+
+    The LLM nodes never raise: each wraps its call in try/except and returns
+    ``status=failed`` + ``error`` on the update so the runner can persist a
+    reason. A plain ``add_edge`` out of such a node throws that away -- the
+    next node runs on empty output, and when that next node is a gate it
+    overwrites ``failed`` with its own status. Seen live on a 63k-char
+    report: extract_entities lost its whole list to one malformed item,
+    gate_0 paused with zero entities and an Approve button, and the AI
+    reviewer rebuilt the gate from scratch. The failure read as a thin
+    source.
+
+    route_after_parse and route_after_chunk_behaviors are this same guard
+    written out by hand for their own incidents; this is the reusable form
+    for every other soft-failing node. Returns a router that sends
+    ``status == failed`` to END and everything else to ``next_node``.
+    """
+    def _route(state: PipelineState) -> str:
+        if state.get("status") == PipelineStatus.FAILED.value:
+            return "__end__"
+        return next_node
+
+    _route.__name__ = f"route_unless_failed_to_{next_node}"
+    return _route
 
 
 def route_after_chunk_behaviors(state: PipelineState) -> str:
@@ -199,6 +230,7 @@ def build_pipeline() -> StateGraph:
         classify_sections         <-- which sections carry behavior
               |
         extract_entities
+              | \\                    status == failed -> END
               |
           [gate_0]                <-- interrupt: analyst reviews entities
               |
@@ -210,8 +242,10 @@ def build_pipeline() -> StateGraph:
               |  \\                   approve -> extract_techniques
               |
         extract_techniques
+              | \\                    status == failed -> END
               |
         draft_procedures
+              | \\                    status == failed -> END
               |
           [gate_1]                <-- interrupt: analyst reviews procedures
            /  |  \\
@@ -283,10 +317,23 @@ def build_pipeline() -> StateGraph:
     # remediation and detection sections).
     graph.add_edge("extract_figures", "classify_sections")
     graph.add_edge("classify_sections", "extract_entities")
-    graph.add_edge("extract_entities", "gate_0")
     graph.add_edge("gate_0", "chunk_behaviors")
-    graph.add_edge("extract_techniques", "draft_procedures")
-    graph.add_edge("draft_procedures", "gate_1")
+
+    # ── Hard-fail guards on the soft-failing LLM nodes ───────────────
+    # Each of these catches its own exceptions and reports status=failed on
+    # the update. END on failure so the node downstream -- a gate for two of
+    # them -- never runs on empty output and overwrites the failed status.
+    # See route_unless_failed.
+    for node, next_node in (
+        ("extract_entities", "gate_0"),
+        ("extract_techniques", "draft_procedures"),
+        ("draft_procedures", "gate_1"),
+    ):
+        graph.add_conditional_edges(
+            node,
+            route_unless_failed(next_node),
+            {next_node: next_node, "__end__": END},
+        )
 
     # ── Conditional edge: chunk_behaviors -> (gate_chunks | END) ──────────
     # END on hard-fail so a swallowed chunker error doesn't get overwritten
