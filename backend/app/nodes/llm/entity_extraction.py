@@ -613,7 +613,30 @@ _REFANG_TYPES = {
 
 # Template placeholders the report itself uses to stand in for a real value:
 # "<organization>.enrollms[.]com", "[COMPANY NAME]", "{victim}".
-_PLACEHOLDER_RE = re.compile(r"<[^<>]{1,40}>|\[[^\[\]]{1,40}\]|\{[^{}]{1,40}\}")
+_BRACKETED_RE = re.compile(r"<[^<>]{1,40}>|\[[^\[\]]{1,40}\]|\{[^{}]{1,40}\}")
+
+# Bracketed tokens that are NOT placeholders. Both were found on one report
+# where the model emitted the right value and this guard threw it away:
+#   * defang brackets -- `brianwilli[.]com`, `user[at]evil[.]ru`. Only the
+#     refanged types (_REFANG_TYPES) shed these before reaching here; every
+#     other type still carries them.
+#   * a GUID in braces -- `HKCU\...\CLSID\{5D4CFCB7-...}\InprocServer32`.
+#     That is what a COM persistence key looks like, not a template.
+_DEFANG_TOKENS = frozenset({".", ":", "at", "@", "dot", "://", "//"})
+_GUID_RE = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+
+
+def _has_placeholder(value: str) -> bool:
+    """True when ``value`` carries a template placeholder such as ``<organization>``.
+
+    A bracketed token counts unless it is a defang token or a GUID.
+    """
+    for m in _BRACKETED_RE.finditer(value):
+        inner = m.group(0)[1:-1].strip()
+        if inner.lower() in _DEFANG_TOKENS or _GUID_RE.fullmatch(inner):
+            continue
+        return True
+    return False
 
 # Leading placeholder on a hostname — the registrable domain after it is the
 # real indicator, so strip rather than drop.
@@ -629,12 +652,19 @@ _VICTIM_PLACEHOLDER_TOKENS = (
 )
 
 # Entity types where a placeholder makes the value unusable as an indicator.
+#
+# NOT ioc_command_line. A command line is a recipe, and `<base64>`, `<exeUrl>`
+# or a `{a,b,c}` brace expansion inside one is how sources print it -- the
+# prompt's own example is `powershell.exe -ExecutionPolicy Bypass -enc
+# <base64>`. One report's two command lines, quoted verbatim, were rejected
+# here as "template placeholders" and came back as AI-reviewer adds on every
+# run; the prompt and this guard disagreed, and the guard won.
 _IOC_TYPES_FOR_PLACEHOLDER = frozenset({
     EntityType.IOC_DOMAIN.value, EntityType.IOC_URL.value,
     EntityType.IOC_EMAIL.value, EntityType.IOC_IP.value,
     EntityType.IOC_HASH.value, EntityType.IOC_FILE_PATH.value,
     EntityType.IOC_PROCESS_NAME.value, EntityType.IOC_REGISTRY_KEY.value,
-    EntityType.IOC_COMMAND_LINE.value, EntityType.IOC_MUTEX.value,
+    EntityType.IOC_MUTEX.value,
 })
 
 # Below this, the model is signaling it is guessing. The audit found a
@@ -655,11 +685,11 @@ def _normalize_placeholder_value(value: str, entity_type: str) -> str | None:
     """
     if entity_type not in _IOC_TYPES_FOR_PLACEHOLDER:
         return value
-    if not _PLACEHOLDER_RE.search(value):
+    if not _has_placeholder(value):
         return value
 
     stripped = _LEADING_PLACEHOLDER_HOST_RE.sub("", value).strip()
-    if stripped and not _PLACEHOLDER_RE.search(stripped):
+    if stripped and not _has_placeholder(stripped):
         return stripped
     return None
 
