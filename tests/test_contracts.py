@@ -1156,6 +1156,41 @@ class TestProcedureNamesDescribeTheAdversary:
         assert "Discuss" in desc
 
 
+class TestSectionClassifierKnowsArtifactLists:
+    """Hunting guidance that lists artifacts is indicator data, not detection logic.
+
+    On one report the "threat detection and hunting" section was a bulleted
+    list of a process tree, scheduled-task names, a mutex and a registry key,
+    with no rule syntax, and the classifier filed it as detection_logic, which
+    entity extraction skips on purpose (rule listings once typed six defender
+    products as adversary tools). Every indicator in the list was lost and the
+    AI reviewer proposed them all back at Gate 0. The definitions now draw the
+    line at rule syntax, not at the heading. This pins the wording, because a
+    prompt edit that reads as a tidy-up can reopen the loss.
+    """
+
+    def test_indicator_data_names_the_artifact_kinds(self):
+        from app.nodes.llm.chunking import CLASSIFY_SYSTEM_PROMPT
+
+        for term in ("mutex", "registry key", "scheduled-task", "process tree"):
+            assert term in CLASSIFY_SYSTEM_PROMPT, term
+
+    def test_detection_logic_is_scoped_to_rule_syntax_not_headings(self):
+        from app.nodes.llm.chunking import CLASSIFY_SYSTEM_PROMPT
+
+        assert "hunting" in CLASSIFY_SYSTEM_PROMPT.lower()
+        assert "rule syntax" in CLASSIFY_SYSTEM_PROMPT
+        assert "A heading does not make a section detection_logic" in CLASSIFY_SYSTEM_PROMPT
+
+    def test_entity_extraction_still_skips_detection_logic(self):
+        """The guard the definitions protect: detection_logic stays excluded
+        from entity extraction, indicator_data stays included."""
+        from app.nodes.llm.entity_extraction import _ENTITY_EXCLUDED_SECTIONS
+
+        assert "detection_logic" in _ENTITY_EXCLUDED_SECTIONS
+        assert "indicator_data" not in _ENTITY_EXCLUDED_SECTIONS
+
+
 class TestVendoredRegionVocabIsIntact:
     """The vendored region-ov had two entries with a missing comma, silently
     merging four values into two, plus one absent outright — 26 values where

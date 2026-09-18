@@ -29,7 +29,12 @@ Three kinds of node, kept apart on purpose.
 
 **Deterministic** (`backend/app/nodes/deterministic/`): `parse_and_validate`,
 `normalize`, `serialize_stix`, `validate_bundle`, `distribute`. No model
-call.
+call. The Docling export runs with `escape_html=False,
+escape_underscores=False`: the defaults turn `&&` into `&amp;&amp;` and
+`UNK_X` into `UNK\_X` in prose and table cells, which made every escaped
+command line fail the entity prompt's verbatim rule. The text is read by
+models and byte-matched for `source_span`, never rendered as Markdown; a
+test pins the flags.
 
 **LLM** (`backend/app/nodes/llm/`): `extract_figures` (vision),
 `classify_sections`, `extract_entities`, `chunk_behaviors`,

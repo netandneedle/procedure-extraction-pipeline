@@ -500,8 +500,8 @@ Every line belongs to exactly one section. If a stretch of text seems unimportan
 
 CLASSIFICATION TYPES:
 - behavioral_narrative: Text describing what the adversary DID. Actions, movements, exploitation, lateral movement, persistence mechanisms, data exfiltration. THIS IS THE PRIMARY TARGET. When in doubt, classify as behavioral_narrative.
-- indicator_data: Sections listing IOCs (hashes, IPs, domains, URLs). Usually in tables or appendices.
-- detection_logic: Verbatim detection rules (Sigma, YARA, Snort, KQL). Code blocks with rule syntax.
+- indicator_data: Sections that LIST concrete artifacts: hashes, IPs, domains, URLs, email addresses, file paths, mutex names, registry keys, scheduled-task names, process trees, dropped filenames. Tables, bullets, or prose. This INCLUDES "detection", "hunting" or "threat hunting" guidance that lists artifacts without rule syntax.
+- detection_logic: Verbatim detection RULES only (Sigma, YARA, Snort, Suricata, KQL, SPL), code blocks with rule syntax, and vendor product-hardening advice. A heading does not make a section detection_logic; rule syntax does.
 - technique_reference: ATT&CK technique tables, MITRE mappings, technique IDs. Not behavioral description.
 - contextual: Background on the threat actor, geopolitical context, industry impact, analyst commentary, executive summary. Does NOT describe specific attack actions.
 - metadata: Dates, authors, TLP markings, document headers/footers, distribution statements.
@@ -520,6 +520,12 @@ MALWARE CAPABILITY SECTIONS:
 Vendor threat reports routinely include a malware deep-dive section that documents what a malware family CAN do (its features, modules, internal architecture) separate from the intrusion narrative describing what HAPPENED. These are NOT behavioral_narrative. Classify malware capability analysis as technique_reference. Only the attack chain narrative (what the adversary actually did during the intrusion) is behavioral_narrative.
 
 Test: Does this section describe actions that occurred during the observed intrusion? → behavioral_narrative. Does it describe what the malware is capable of, independent of this specific intrusion? → technique_reference.
+
+DETECTION AND HUNTING SECTIONS:
+"Detection", "Hunting", "Threat hunting" and "Indicators" headings carry two different kinds of content, and the label follows the CONTENT, not the heading:
+- A list of concrete artifacts — a suspicious process tree, scheduled-task names, mutex names, registry keys, dropped file paths, session keys — is indicator_data, even under a "detection" heading and even when phrased as advice ("look for...", "hunt for..."). Those artifacts are extracted as entities; entity extraction skips detection_logic, so filing an artifact list there silently loses every indicator in it.
+- Verbatim rule syntax (Sigma, YARA, Snort/Suricata, KQL, SPL) and vendor product-hardening advice is detection_logic.
+- A section with both: split at the rule block when the line ranges allow; otherwise indicator_data. Recall wins — the entity extractor rejects defensive products on its own.
 
 EVENT / ACTIVITY TIMELINE TABLES:
 Vendor reports often include an "Activity Timeline" or "Event Table" that retells the same intrusion events described in the narrative summary, but with structured fields (dates, command lines, analyst comments). These ARE behavioral_narrative. Do NOT treat them as a separate classification type. They describe the same attack actions with additional detail.

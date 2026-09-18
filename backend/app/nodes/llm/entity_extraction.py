@@ -849,6 +849,15 @@ _ENTITY_EXCLUDED_SECTIONS = frozenset({
     # Vendor detection rules and mitigation guidance — the source of the
     # defensive products (Defender, SmartScreen, SecOps) that were being
     # typed as adversary tooling.
+    #
+    # The boundary is drawn by the classifier, not here: CLASSIFY_SYSTEM_PROMPT
+    # scopes detection_logic to rule syntax and product-hardening advice, and
+    # files artifact LISTS under a "detection" or "hunting" heading (process
+    # trees, mutex names, registry keys, scheduled-task names) as
+    # indicator_data, which this set keeps. One report's mutex and registry
+    # key lived only in such a list; filed as detection_logic they were
+    # dropped here and came back as reviewer adds. An IOC missing from Gate 0
+    # is a classification question before it is an extraction one.
     SectionClassification.DETECTION_LOGIC.value,
     # ATT&CK mapping tables: technique IDs, not entities.
     SectionClassification.TECHNIQUE_REFERENCE.value,

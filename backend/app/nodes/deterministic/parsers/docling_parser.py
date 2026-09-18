@@ -133,8 +133,24 @@ class DoclingParser(BaseParser):
                 f"{type(e).__name__}: {e}"
             ) from e
 
-        # Export to Markdown (preserves headings, tables, lists, code blocks)
-        markdown_text = doc.export_to_markdown()
+        # Export to Markdown (preserves headings, tables, lists, code blocks).
+        #
+        # Both escape flags OFF, deliberately. docling-core's defaults
+        # HTML-escape `& < >` and backslash-escape `_` in prose and table
+        # cells (code blocks are exempt), so a report's `&&` reached the
+        # LLM as `&amp;&amp;`, `<exeUrl>` as `&lt;exeUrl&gt;` and `UNK_X` as
+        # `UNK\_X`. The entity prompt demands command lines VERBATIM and
+        # forbids normalizing, so every escaped command line was silently
+        # dropped; every source_excerpt and source_span byte-match saw the
+        # same corruption. This text is consumed by models and byte-matched,
+        # never rendered as Markdown, and docling-core's own chunker exports
+        # with the same two flags. `image_placeholder` stays at its default:
+        # the `<!-- image -->` marker is emitted outside the escaping path and
+        # figure_extraction replaces it positionally. Pinned by
+        # tests/test_parse.py::TestDoclingExport.
+        markdown_text = doc.export_to_markdown(
+            escape_html=False, escape_underscores=False,
+        )
 
         if not markdown_text or not markdown_text.strip():
             raise ValueError(

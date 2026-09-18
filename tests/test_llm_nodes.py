@@ -3767,6 +3767,28 @@ class TestEntityExtractionSectionFilter:
         assert "Defender" not in text
         assert "T1059" not in text
 
+    def test_indicator_data_sections_are_kept(self):
+        """A hunting list of artifacts is indicator_data and must reach the
+        extractor. One report's mutex and registry key lived only in such a
+        list; misfiled as detection_logic they were dropped here and came
+        back as AI-reviewer adds at Gate 0."""
+        from app.nodes.llm.entity_extraction import _text_for_entity_extraction
+
+        state = {
+            "parsed_text": "irrelevant",
+            "classified_sections": [
+                {"text": "The actor used curl.exe.",
+                 "classification": "behavioral_narrative"},
+                {"text": ("- Mutex named Dataupcheckinfo\n"
+                          "- Registry writes to HKCU\\SOFTWARE\\Classes\\CLSID"
+                          "\\{...}\\InprocServer32 for persistence"),
+                 "classification": "indicator_data"},
+            ],
+        }
+        text = _text_for_entity_extraction(state)
+        assert "Dataupcheckinfo" in text
+        assert "InprocServer32" in text
+
     def test_metadata_sections_are_kept_for_provenance(self):
         """Footers look like boilerplate but carry the publisher.
 
