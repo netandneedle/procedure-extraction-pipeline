@@ -7,8 +7,12 @@ into pairwise procedure→procedure precedes SROs.
 
 Design:
   * Geometry-derived defaults: ≥2 predecessors → AND (converge); ≥2
-    successors → OR (branch). XOR is never inferred — it's analyst-marked
-    only, via the operator-kind override at gate_chunks.
+    successors → OR (branch). One exception: a converge whose predecessors
+    come from ≥2 distinct labelled chains, or are all chain roots, defaults
+    to OR — separate intrusion chains meeting at a shared step (four
+    campaign lures feeding one exploit kit) are alternatives, and AND would
+    assert every chain must occur. XOR is never inferred — it's
+    analyst-marked only, via the operator-kind override at gate_chunks.
   * Stable operator STIX IDs: derived from (role, sorted input chunk_ids,
     sorted output chunk_ids) so identical geometry across re-runs yields
     the same `attack-operator--<hash>` id. Re-chunking that changes the
@@ -101,13 +105,16 @@ def infer_operators(
         if meta.get("kind") in {"AND", "OR", "XOR"}
     }
 
-    # Converge operators: any chunk with ≥2 predecessors gets an AND.
+    # Converge operators: any chunk with ≥2 predecessors gets an AND,
+    # unless the predecessors belong to different chains (see module
+    # docstring) — then OR. An explicit override still wins.
     for chunk_id, preds in predecessors.items():
         if len(preds) < 2:
             continue
         sorted_preds = sorted(preds)
         op_id = _operator_id("converge", sorted_preds, [chunk_id])
-        kind = existing_kind_by_id.get(op_id, "AND")
+        default = "OR" if _is_cross_chain(sorted_preds, chunks_by_id) else "AND"
+        kind = existing_kind_by_id.get(op_id, default)
         operators[op_id] = {
             "kind": kind,
             "role": "converge",
@@ -144,6 +151,22 @@ def infer_operators(
             sum(1 for o in operators.values() if o["role"] == "branch"),
         )
     return operators
+
+
+def _is_cross_chain(pred_ids: list[str], chunks_by_id: dict[str, dict]) -> bool:
+    """True when a converge's predecessors come from different chains.
+
+    "Different" means ≥2 distinct non-empty `chain_label` values, or every
+    predecessor is itself a `chain_root`. Either way the chains meeting at
+    the anchor are alternatives, not co-requisites, so the converge should
+    read OR. The implicit primary chain can carry an empty label
+    (chunking leaves chunk 1 unlabelled when no root is marked), so one
+    unlabelled chain plus one labelled chain is NOT counted as two — label
+    your chains if you want the OR default.
+    """
+    preds = [chunks_by_id[p] for p in pred_ids]
+    labels = {(c.get("chain_label") or "").strip() for c in preds} - {""}
+    return len(labels) >= 2 or all(c.get("chain_root") for c in preds)
 
 
 def _operator_id(role: str, inputs: list[str], outputs: list[str]) -> str:

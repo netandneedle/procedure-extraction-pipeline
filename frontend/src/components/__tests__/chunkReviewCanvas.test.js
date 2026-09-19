@@ -191,6 +191,19 @@ describe("buildSubmitPayload", () => {
     expect(buildSubmitPayload(base)).toEqual({});
   });
 
+  it("emits is_sequential when the analyst overrides the auto-detect", () => {
+    // The flag is otherwise frozen after entity extraction; the override is
+    // what lets flow edges ship for a source misread as a catalogue.
+    expect(buildSubmitPayload({ ...base, sequentialOverride: true }))
+      .toEqual({ is_sequential: true });
+    expect(buildSubmitPayload({ ...base, sequentialOverride: false }))
+      .toEqual({ is_sequential: false });
+  });
+
+  it("omits is_sequential when the analyst left the chip alone", () => {
+    expect(buildSubmitPayload({ ...base, sequentialOverride: null })).toEqual({});
+  });
+
   it("emits a drop decision", () => {
     const out = buildSubmitPayload({ ...base, droppedIds: new Set(["a"]) });
     expect(out.decisions).toEqual([{ chunk_id: "a", action: "drop" }]);

@@ -91,6 +91,10 @@ export const GLOSSARY = {
     "default — flip it back to approve to override, for this source only.",
 
   // ── Gate 1 — procedures ─────────────────────────────────────────────
+  sequential:
+    "Whether the report describes steps in the order they happened. Yes " +
+    "wires procedures into an ordered flow; no ships them as an unordered " +
+    "list. Click to override the auto-detected answer.",
   precedes:
     "An arrow meaning this procedure runs before that one. Drag between the " +
     "handles on two nodes to add one; click an edge and press Delete to remove it.",

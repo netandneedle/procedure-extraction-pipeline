@@ -534,10 +534,12 @@ const REJECT_REASONS = [
  *   - edges[]: net mutations against the original precedes_ids set —
  *     opposing add/remove pairs collapse, edges involving synthetic IDs
  *     are filtered out (backend can't resolve them; v1 limitation).
+ *   - is_sequential: only when the analyst clicked the chip; null (the
+ *     default) keeps the auto-detected flag and sends nothing.
  */
 export function buildSubmitPayload({
   originalChunks, edits, droppedIds, addedChunks, edgeOps, operatorOverrides,
-  conditionEdits, mergeGroups,
+  conditionEdits, mergeGroups, sequentialOverride = null,
 }) {
   const decisions = [];
   // Chunks absorbed by a merge are handled by their survivor's decision —
@@ -624,6 +626,10 @@ export function buildSubmitPayload({
   if (edges.length) submission.edges = edges;
   if (overrideList.length) submission.operator_overrides = overrideList;
   if (conditionList.length) submission.condition_edits = conditionList;
+  // Sequentiality override: the auto-detected flag is otherwise frozen
+  // after entity extraction. Only sent when the analyst clicked the chip;
+  // null means "keep what was detected".
+  if (typeof sequentialOverride === "boolean") submission.is_sequential = sequentialOverride;
   return submission;
 }
 
@@ -1587,6 +1593,11 @@ export default function ChunkReviewCanvas({
   // Operators not present in this map use their geometry-derived default
   // (AND for converge, OR for branch) surfaced via payload.chunk_operators.
   const [operatorOverrides, setOperatorOverrides] = useState({});
+  // Analyst override of the auto-detected sequentiality. null = untouched;
+  // a boolean is sent as `is_sequential` on submit (approve OR reject) and
+  // decides downstream whether the bundle gets PRECEDES edges, operators
+  // and conditions at all.
+  const [sequentialOverride, setSequentialOverride] = useState(null);
   // Condition edits keyed by chunk_id: {chunk_id: {action: "set"|"clear",
   // description, pattern, pattern_type, on_true_ids, on_false_ids}}.
   // Only chunks the analyst actively touched appear here; everything else
@@ -1778,9 +1789,10 @@ export default function ChunkReviewCanvas({
       operatorOverrides,
       conditionEdits,
       mergeGroups,
+      sequentialOverride,
     });
     onSubmit(submission, { willRerun: false });
-  }, [onSubmit, payload?.chunks, edits, droppedIds, addedChunks, edgeOps, operatorOverrides, conditionEdits, mergeGroups]);
+  }, [onSubmit, payload?.chunks, edits, droppedIds, addedChunks, edgeOps, operatorOverrides, conditionEdits, mergeGroups, sequentialOverride]);
 
   // Merge the selected chunk INTO the given survivor. The survivor keeps its
   // identity and flow position; the selected chunk is absorbed.
@@ -1977,9 +1989,13 @@ export default function ChunkReviewCanvas({
 
   const handleReject = useCallback(({ reason, comments }) => {
     if (!onSubmit) return;
-    onSubmit({ reject: { reason, comments } }, { willRerun: true });
+    const body = { reject: { reason, comments } };
+    // The rerun chunker's prompt depends on the flag, so a flip must ride
+    // along with the reject rather than wait for the next pass.
+    if (typeof sequentialOverride === "boolean") body.is_sequential = sequentialOverride;
+    onSubmit(body, { willRerun: true });
     setShowRejectModal(false);
-  }, [onSubmit]);
+  }, [onSubmit, sequentialOverride]);
 
   // Whether any local state would actually change the chunk set on submit.
   // Drives the "no-op approve" hint without disabling the button — the
@@ -1994,9 +2010,11 @@ export default function ChunkReviewCanvas({
       || Object.keys(conditionEdits).length > 0
       // Merges were missing here, so a merge-only pass showed "Approve
       // as-is" on a button that was about to submit a merge.
-      || Object.keys(mergeGroups).length > 0,
-    [edits, droppedIds, addedChunks, edgeOps, operatorOverrides, conditionEdits, mergeGroups],
+      || Object.keys(mergeGroups).length > 0
+      || sequentialOverride !== null,
+    [edits, droppedIds, addedChunks, edgeOps, operatorOverrides, conditionEdits, mergeGroups, sequentialOverride],
   );
+  const effectiveSequential = sequentialOverride ?? payload?.is_sequential;
 
   const selectedChunk = useMemo(
     () => liveChunks.find((c) => c.chunk_id === selectedId) || null,
@@ -2057,19 +2075,27 @@ export default function ChunkReviewCanvas({
         <div className="text-[11px] text-gb-fg4 font-data flex items-center gap-3 flex-wrap">
           {/* Sequentiality chip: explains why the canvas may have many
               disconnected components (catalog mode) vs a single connected
-              DAG (sequential mode). Hover for the auto-detect rationale. */}
+              DAG (sequential mode). Hover for the auto-detect rationale;
+              click to override it. The override ships with the submit and
+              is what decides whether any edge drawn here reaches the
+              bundle — a source misread as a catalogue otherwise loses
+              every PRECEDES edge at serialization. */}
           {typeof payload.is_sequential === "boolean" && (
             <>
-              <span
-                className={`px-1.5 py-0.5 rounded font-medium ${
-                  payload.is_sequential
+              <button
+                type="button"
+                onClick={() => setSequentialOverride((v) => (v === null ? !payload.is_sequential : null))}
+                className={`px-1.5 py-0.5 rounded font-medium cursor-pointer ${
+                  effectiveSequential
                     ? "bg-gb-bright-blue/15 text-gb-bright-blue border border-gb-bright-blue/40"
                     : "bg-gb-bright-orange/15 text-gb-bright-orange border border-gb-bright-orange/40"
                 }`}
                 title={payload.sequentiality_rationale || "No rationale available"}
               >
-                Sequential: {payload.is_sequential ? "yes" : "no"}
-              </span>
+                Sequential: {effectiveSequential ? "yes" : "no"}
+                {sequentialOverride !== null ? " (overridden)" : ""}
+              </button>
+              <InfoDot term="sequential" />
               <span>·</span>
             </>
           )}

@@ -166,6 +166,34 @@ def _append_chunk_corrections(state: PipelineState, entries: list[dict]) -> list
     return list(state.get("chunk_correction_log", []) or []) + entries
 
 
+def _sequentiality_override(state: PipelineState, review: dict) -> dict:
+    """Analyst override of `is_sequential`, submitted with the gate review.
+
+    Entity extraction sets the flag once and nothing downstream re-derives
+    it, so without this the analyst's only lever on a misread source was to
+    re-ingest it. Returns the state keys to overwrite, or {} when the review
+    carries no boolean. The rationale keeps the auto-detect reasoning and
+    appends the override, so the later gate reviewers and the bundle's
+    provenance see both.
+    """
+    flag = review.get("is_sequential")
+    if not isinstance(flag, bool):
+        return {}
+    base = (state.get("sequentiality_rationale") or "").strip()
+    note = (
+        f"Overridden to {'sequential' if flag else 'non-sequential'} "
+        "by the analyst at the procedure gate."
+    )
+    logger.info(
+        "gate_chunks: analyst overrode is_sequential %s -> %s",
+        state.get("is_sequential"), flag,
+    )
+    return {
+        "is_sequential": flag,
+        "sequentiality_rationale": f"{base} | {note}" if base else note,
+    }
+
+
 def gate_chunks(state: PipelineState) -> dict:
     """Process chunk review decisions from the analyst.
 
@@ -173,6 +201,8 @@ def gate_chunks(state: PipelineState) -> dict:
     routing semantics. Returns a state update dict with refreshed `chunks`,
     `chunk_decisions`, `chunks_approved_ids`, `chunks_rejection_routing`,
     optional `chunk_rerun_feedback`, plus the standard status/current_node.
+    An `is_sequential` boolean on the review overrides the auto-detected
+    flag on both the approve and reject paths (see _sequentiality_override).
     Every non-approve analyst signal is also appended to the durable
     chunk_correction_log (see _append_chunk_corrections).
     """
@@ -211,6 +241,9 @@ def gate_chunks(state: PipelineState) -> dict:
             "chunks_approved_ids": [],
             "chunks_rejection_routing": "chunk_behaviors",
             "chunk_rerun_feedback": {"reason": reason, "comments": comments},
+            # The rerun chunker's prompt depends on is_sequential, so a flip
+            # submitted with the reject must reach it.
+            **_sequentiality_override(state, review),
             # Durable copy: chunk_behaviors clears chunk_rerun_feedback after
             # consuming it, so this ledger entry is what reaches the flywheel.
             "chunk_correction_log": _append_chunk_corrections(state, [{
@@ -517,6 +550,7 @@ def gate_chunks(state: PipelineState) -> dict:
         "chunks_rejection_routing": None,
         "chunk_operators": operator_kinds,
         "chunk_conditions": chunk_conditions,
+        **_sequentiality_override(state, review),
         # Durable copy of this pass's non-approve signal (chunk_decisions is
         # last-write-wins across re-chunk loops; chunk_reviews is cleared).
         "chunk_correction_log": _append_chunk_corrections(state, correction_entries),

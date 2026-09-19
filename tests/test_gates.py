@@ -1832,6 +1832,70 @@ class TestGateChunks:
         assert result["chunk_decisions"] == []
         assert result["chunks_approved_ids"] == []
 
+    def test_sequential_override_applies_on_approve(self):
+        """The analyst can flip the auto-detected sequentiality at the gate.
+
+        Entity extraction sets the flag once; without this override a source
+        misread as a catalogue lost every PRECEDES edge at serialization and
+        the only fix was re-ingesting it.
+        """
+        state = {
+            "chunks": [{"chunk_id": "ch-1"}],
+            "gates_enabled": {"chunks": True},
+            "is_sequential": False,
+            "sequentiality_rationale": "Catalogue of four campaigns.",
+            "chunk_reviews": {"is_sequential": True},
+        }
+        result = gate_chunks(state)
+        assert result["is_sequential"] is True
+        assert result["sequentiality_rationale"] == (
+            "Catalogue of four campaigns. | Overridden to sequential by the "
+            "analyst at the procedure gate."
+        )
+        assert result["chunks_approved_ids"] == ["ch-1"]
+
+    def test_sequential_override_applies_on_reject(self):
+        """A reject re-enters chunk_behaviors, whose prompt depends on the
+        flag, so the override must ride along with the rerun."""
+        state = {
+            "chunks": [{"chunk_id": "ch-1"}],
+            "gates_enabled": {"chunks": True},
+            "is_sequential": False,
+            "sequentiality_rationale": "",
+            "chunk_reviews": {
+                "reject": {"reason": "bad_flow", "comments": "one shared chain"},
+                "is_sequential": True,
+            },
+        }
+        result = gate_chunks(state)
+        assert result["chunks_rejection_routing"] == "chunk_behaviors"
+        assert result["is_sequential"] is True
+        assert result["sequentiality_rationale"] == (
+            "Overridden to sequential by the analyst at the procedure gate."
+        )
+
+    def test_sequential_override_absent_leaves_state_untouched(self):
+        state = {
+            "chunks": [{"chunk_id": "ch-1"}],
+            "gates_enabled": {"chunks": True},
+            "is_sequential": False,
+            "chunk_reviews": {"decisions": [{"chunk_id": "ch-1", "action": "approve"}]},
+        }
+        result = gate_chunks(state)
+        assert "is_sequential" not in result
+        assert "sequentiality_rationale" not in result
+
+    def test_sequential_override_ignored_when_gate_disabled(self):
+        """A disabled gate has no review to honour."""
+        state = {
+            "chunks": [{"chunk_id": "ch-1"}],
+            "gates_enabled": {"chunks": False},
+            "is_sequential": False,
+            "chunk_reviews": {"is_sequential": True},
+        }
+        result = gate_chunks(state)
+        assert "is_sequential" not in result
+
     def test_drop_excludes_chunk_from_output(self):
         chunks = [
             {"chunk_id": "ch-1", "text": "a"},

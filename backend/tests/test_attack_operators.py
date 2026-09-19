@@ -19,8 +19,8 @@ from app.nodes.deterministic.attack_operators import (
 )
 
 
-def _chunk(chunk_id: str, precedes: list[str] | None = None) -> dict:
-    return {"chunk_id": chunk_id, "precedes_ids": list(precedes or [])}
+def _chunk(chunk_id: str, precedes: list[str] | None = None, **extra) -> dict:
+    return {"chunk_id": chunk_id, "precedes_ids": list(precedes or []), **extra}
 
 
 class TestInferOperators:
@@ -47,6 +47,62 @@ class TestInferOperators:
         assert meta["anchor_chunk_id"] == "C"
         assert meta["input_chunk_ids"] == ["A", "B"]
         assert meta["output_chunk_ids"] == ["C"]
+
+    def test_converge_from_distinct_chains_defaults_to_or(self):
+        # Two labelled intrusion chains meeting at a shared step are
+        # alternatives, not co-requisites: AND would assert that both
+        # intrusions must occur before the shared step runs.
+        chunks = [
+            _chunk("A", ["K"], chain_root=True, chain_label="TA412 campaign"),
+            _chunk("B", ["K"], chain_root=True, chain_label="LateNight campaign"),
+            _chunk("K", [], chain_label="shared exploit kit"),
+        ]
+        (meta,) = infer_operators(chunks, is_sequential=True).values()
+        assert meta["role"] == "converge"
+        assert meta["kind"] == "OR"
+
+    def test_converge_from_all_chain_roots_defaults_to_or(self):
+        # Roots with no label at all still read as separate entries.
+        chunks = [
+            _chunk("A", ["K"], chain_root=True),
+            _chunk("B", ["K"], chain_root=True),
+            _chunk("K", []),
+        ]
+        (meta,) = infer_operators(chunks, is_sequential=True).values()
+        assert meta["kind"] == "OR"
+
+    def test_converge_within_one_chain_stays_and(self):
+        chunks = [
+            _chunk("A", ["C"], chain_label="one chain"),
+            _chunk("B", ["C"], chain_label="one chain"),
+            _chunk("C", [], chain_label="one chain"),
+        ]
+        (meta,) = infer_operators(chunks, is_sequential=True).values()
+        assert meta["kind"] == "AND"
+
+    def test_converge_with_one_unlabeled_chain_stays_and(self):
+        # The implicit primary chain can carry an empty label; one labelled
+        # side chain joining it is not evidence of two chains, so the
+        # geometry default holds. Label your chains.
+        chunks = [
+            _chunk("A", ["C"]),
+            _chunk("B", ["C"], chain_label="side chain"),
+            _chunk("C", []),
+        ]
+        (meta,) = infer_operators(chunks, is_sequential=True).values()
+        assert meta["kind"] == "AND"
+
+    def test_override_beats_cross_chain_default(self):
+        chunks = [
+            _chunk("A", ["K"], chain_root=True, chain_label="x"),
+            _chunk("B", ["K"], chain_root=True, chain_label="y"),
+            _chunk("K", []),
+        ]
+        (op_id,) = infer_operators(chunks, is_sequential=True).keys()
+        ops = infer_operators(
+            chunks, is_sequential=True, existing_operators={op_id: {"kind": "XOR"}},
+        )
+        assert ops[op_id]["kind"] == "XOR"
 
     def test_branch_two_successors_emits_or(self):
         # A leads to both B and C.

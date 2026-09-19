@@ -840,6 +840,53 @@ class TestGateRoutes:
 
             app.dependency_overrides.clear()
 
+    def _submit_chunks(self, body: dict):
+        """POST a chunk-gate submission against a mocked graph; returns
+        (response, checkpointed chunk_reviews payload)."""
+        pre_state = MagicMock()
+        pre_state.values = self._make_chunks_state()
+
+        mock_graph = AsyncMock()
+        mock_graph.aget_state = AsyncMock(return_value=pre_state)
+        mock_graph.aupdate_state = AsyncMock()
+
+        async def fake_stream(*args, **kwargs):
+            yield {"extract_techniques": {"status": "extracting_techniques"}}
+        mock_graph.astream = fake_stream
+
+        with patch("app.api.routes.gates.queue_service") as mock_qs, \
+             patch("app.api.routes.pipeline.queue_service") as mock_qs_pipeline:
+            mock_qs.update_status = AsyncMock()
+            mock_qs_pipeline.update_status = AsyncMock()
+
+            from app.main import app
+            from app.api.dependencies import get_graph
+            app.dependency_overrides[get_graph] = lambda: mock_graph
+
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.post(
+                "/api/gates/00000000-0000-4000-8000-000000000001/chunks/submit",
+                json=body,
+            )
+            app.dependency_overrides.clear()
+
+        payload = mock_graph.aupdate_state.call_args[0][1]["chunk_reviews"]
+        return response, payload
+
+    def test_submit_chunks_forwards_is_sequential(self):
+        """The sequentiality override rides through to the checkpoint so the
+        gate processor (not the route) applies it."""
+        response, payload = self._submit_chunks({"is_sequential": True})
+        assert response.status_code == 202
+        assert payload["is_sequential"] is True
+
+    def test_submit_chunks_omits_is_sequential_when_unset(self):
+        """None must not reach state: `exclude_none` drops it, and the gate
+        processor treats an absent key as "keep the detected value"."""
+        response, payload = self._submit_chunks({})
+        assert response.status_code == 202
+        assert "is_sequential" not in payload
+
     def test_submit_chunks_reject(self):
         pre_state = MagicMock()
         pre_state.values = self._make_chunks_state()

@@ -669,7 +669,8 @@ class ChunkGateSubmit(BaseModel):
 
     All fields optional. If `reject` is set, the gate processor ignores
     decisions/added_chunks/edges/operator_overrides and routes back to
-    chunk_behaviors.
+    chunk_behaviors. `is_sequential` is honoured on BOTH paths: a reject
+    re-runs the chunker, whose prompt depends on the flag.
     """
     decisions: list[ChunkDecisionItem] = Field(default_factory=list)
     added_chunks: list[AddedChunkItem] = Field(default_factory=list)
@@ -677,6 +678,14 @@ class ChunkGateSubmit(BaseModel):
     operator_overrides: list[OperatorOverrideItem] = Field(default_factory=list)
     condition_edits: list[ConditionEditItem] = Field(default_factory=list)
     reject: ChunkGateRejectItem | None = None
+    is_sequential: bool | None = Field(
+        default=None,
+        description=(
+            "Analyst override of the auto-detected sequentiality. None keeps "
+            "the detected value. False ships the bundle without PRECEDES "
+            "edges, operators or conditions; True enables all three."
+        ),
+    )
     checkpoint_id: str | None = Field(
         default=None,
         description="Optimistic-concurrency token; see Gate0Submit.checkpoint_id.",
