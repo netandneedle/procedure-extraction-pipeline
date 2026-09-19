@@ -18,6 +18,7 @@ from typing import Any, Literal
 from pydantic import AliasPath, BaseModel, Field, field_validator, model_validator
 
 from app.graph.state import (
+    CHUNK_EDITABLE_FIELDS,
     DEFAULT_GATE_MODES,
     DEFAULT_GATES,
     ChunkProblemType,
@@ -562,10 +563,9 @@ _VALID_CHUNK_REJECT_REASONS = (
     "missed_procedures", "over_chunked", "under_chunked",
     "bad_boundaries", "bad_descriptions", "bad_flow", "other",
 )
-_CHUNK_EDITABLE_FIELDS = (
-    "text", "source_excerpt", "context",
-    "behavioral_confidence", "branch_point", "convergence_point",
-)
+# The same object gate_chunks filters on — see CHUNK_EDITABLE_FIELDS in
+# app.graph.state for why there is exactly one.
+_CHUNK_EDITABLE_FIELDS = CHUNK_EDITABLE_FIELDS
 
 
 class ChunkDecisionItem(BaseModel):

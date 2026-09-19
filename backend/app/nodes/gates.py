@@ -54,6 +54,7 @@ import uuid
 
 from app.nodes.deterministic.attack_operators import splice_absent
 from app.graph.state import (
+    CHUNK_EDITABLE_FIELDS,
     ChunkGateRejectReason,
     ChunkProblemType,
     GateAction,
@@ -88,21 +89,11 @@ logger = logging.getLogger(__name__)
 # When `reject` is present everything else is ignored — the gate routes back
 # to chunk_behaviors with the comments attached.
 
-# Whitelist of chunk fields the analyst can edit in-place. chunk_id /
+# Whitelist of chunk fields the analyst can edit in-place. Shared with the
+# API validator — see CHUNK_EDITABLE_FIELDS in app.graph.state. chunk_id /
 # sequence_index / predecessor_indices / precedes_ids / source_span are
 # managed by the gate processor (or derived) — not directly editable.
-_CHUNK_EDITABLE_FIELDS = frozenset({
-    "text",
-    "source_excerpt",
-    "context",
-    "behavioral_confidence",
-    "branch_point",
-    "convergence_point",
-    # Chain-separation fields the analyst can flip when the chunker
-    # missed (or wrongly identified) a multi-intrusion boundary.
-    "chain_root",
-    "chain_label",
-})
+_CHUNK_EDITABLE_FIELDS = CHUNK_EDITABLE_FIELDS
 
 
 def _next_sequence_index(chunks: list[dict]) -> int:
@@ -110,6 +101,42 @@ def _next_sequence_index(chunks: list[dict]) -> int:
     if not chunks:
         return 1
     return max(int(c.get("sequence_index", 0) or 0) for c in chunks) + 1
+
+
+def _sync_predecessor_indices(chunks: list[dict]) -> None:
+    """Rebuild every chunk's predecessor_indices from the final precedes_ids.
+
+    The gate's edge, drop-rewire and merge handling all mutate `precedes_ids`
+    only, but drafting copies `predecessor_indices` onto each draft, and the
+    technique-gate flow editor, the bundle-gate relationship preview and the
+    attack-flow start_refs fallback all read that copy. Until this ran, every
+    edge the analyst drew here reached the bundle (the serializer walks
+    `precedes_ids`) but not the two review surfaces after it — they kept
+    describing the chunker's original graph. This is the exact reverse of the
+    chunker's own inversion in `_finalize_chunks`. Assigns fresh lists: the
+    approve pass-through appends the caller's dicts, so no shared list may be
+    appended to in place.
+    """
+    id_to_seq: dict[str, int] = {}
+    for chunk in chunks:
+        cid = chunk.get("chunk_id")
+        seq = chunk.get("sequence_index")
+        if cid and isinstance(seq, int) and not isinstance(seq, bool):
+            id_to_seq[cid] = seq
+    preds: dict[str, set[int]] = {
+        c["chunk_id"]: set() for c in chunks if c.get("chunk_id")
+    }
+    for chunk in chunks:
+        src_seq = id_to_seq.get(chunk.get("chunk_id"))
+        if src_seq is None:
+            continue
+        for tgt in chunk.get("precedes_ids") or []:
+            if tgt in preds:
+                preds[tgt].add(src_seq)
+    for chunk in chunks:
+        cid = chunk.get("chunk_id")
+        if cid in preds:
+            chunk["predecessor_indices"] = sorted(preds[cid])
 
 
 def _apply_chunk_edits(chunk: dict, edits: dict) -> dict:
@@ -535,6 +562,10 @@ def gate_chunks(state: PipelineState) -> dict:
             "on_false_ids": on_false_ids,
         }
 
+    # Every mutation above touched precedes_ids only; bring the LLM-shaped
+    # copy in line so drafting and the later gates see the same graph.
+    _sync_predecessor_indices(new_chunks)
+
     approved_ids = [c["chunk_id"] for c in new_chunks]
     logger.info(
         "gate_chunks approve: %d -> %d chunks (edits=%d, drops=%d, adds=%d, edge_changes=%d, op_overrides=%d, cond_edits=%d)",
@@ -898,6 +929,9 @@ def gate_1(state: PipelineState) -> dict:
         return result
 
     reviews = state.get("gate1_reviews", [])
+    # Drafts whose sequencing / chain fields the analyst edited; their chunks
+    # are re-synced below so the bundle follows the edit.
+    sequencing_edited: set[str] = set()
     review_map = {r["draft_id"]: r for r in reviews if "draft_id" in r}
 
     decisions = []
@@ -945,6 +979,8 @@ def gate_1(state: PipelineState) -> dict:
             # output (the "before"), not the applied edit.
             correction_records.append(_correction_record(draft, review, action))
             _apply_draft_edits(draft, review)
+            if set((review.get("analyst_edits") or {}).keys()) & _SEQUENCING_EDIT_FIELDS:
+                sequencing_edited.add(did)
         elif action == GateAction.REJECT.value:
             correction_records.append(_correction_record(draft, review, action))
             reason = review.get("reject_reason", "")
@@ -1086,6 +1122,15 @@ def gate_1(state: PipelineState) -> dict:
         result["technique_mappings"] = bundle
         result["technique_mappings_for_review"] = review_lane
         result["drafts"] = updated_drafts
+
+    if sequencing_edited and state.get("chunks"):
+        result["chunks"] = _mirror_sequencing_onto_chunks(
+            list(state.get("chunks") or []), drafts, set(approved_ids),
+        )
+        logger.info(
+            "Gate 1: mirrored sequencing/chain edits from %d draft(s) onto %d chunks",
+            len(sequencing_edited), len(result["chunks"]),
+        )
 
     return result
 
@@ -1291,6 +1336,83 @@ def _build_decision(
     return decision
 
 
+_SEQUENCING_EDIT_FIELDS = frozenset({
+    "sequence_index", "predecessor_indices", "chain_root", "chain_label",
+})
+
+
+def _mirror_sequencing_onto_chunks(
+    chunks: list[dict], drafts: list[dict], approved_ids: set[str],
+) -> list[dict]:
+    """Copy approved drafts' sequencing and chain fields back onto the chunks.
+
+    The technique gate's flow editor edits sequence_index / predecessor_indices
+    (and chain_root / chain_label) on DRAFTS. normalize reads those for the
+    relationship preview and the start_refs fallback, but the bundle's PRECEDES
+    edges and operators are routed from the chunks' precedes_ids — so without
+    this mirror a reorder showed in every review surface and never reached the
+    bundle. Mirroring also carries the edit across a WRONG_TECHNIQUE rerun,
+    which re-drafts from state["chunks"].
+
+    Sequence indices come from the approved drafts, not the chunks: the flow
+    editor renumbers drafts 1..N and remaps predecessors through the new
+    numbering, so the chunks' old sequence_index must not drive the inversion.
+    predecessor_indices are sanitized here because nothing upstream checks
+    them: ints only, no self-reference, no unknown sequence. Chunks without an
+    approved draft (removed, rejected) are returned untouched; the caller's
+    dicts are never mutated.
+    """
+    approved = [
+        d for d in drafts
+        if d.get("draft_id") in approved_ids and d.get("chunk_id")
+    ]
+    seq_to_chunk_id: dict[int, str] = {}
+    for d in approved:
+        seq = d.get("sequence_index")
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            seq_to_chunk_id[seq] = d["chunk_id"]
+    draft_by_chunk = {d["chunk_id"]: d for d in approved}
+
+    updated: list[dict] = []
+    preds_by_chunk: dict[str, list[int]] = {}
+    for chunk in chunks:
+        cid = chunk.get("chunk_id")
+        draft = draft_by_chunk.get(cid)
+        if draft is None:
+            updated.append(chunk)
+            continue
+        out = dict(chunk)
+        seq = draft.get("sequence_index")
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            out["sequence_index"] = seq
+        preds = sorted({
+            p for p in (draft.get("predecessor_indices") or [])
+            if isinstance(p, int) and not isinstance(p, bool)
+            and p in seq_to_chunk_id and p != seq
+        })
+        out["predecessor_indices"] = preds
+        for key in ("chain_root", "chain_label"):
+            if key in draft:
+                out[key] = draft[key]
+        updated.append(out)
+        preds_by_chunk[cid] = preds
+
+    # Invert the sanitized predecessors into forward edges; only chunks with
+    # an approved draft get a rebuilt precedes_ids.
+    forward: dict[str, list[str]] = {cid: [] for cid in preds_by_chunk}
+    for out in updated:
+        cid = out.get("chunk_id")
+        for p in preds_by_chunk.get(cid, []):
+            src = seq_to_chunk_id[p]
+            if src in forward and cid not in forward[src]:
+                forward[src].append(cid)
+    for out in updated:
+        cid = out.get("chunk_id")
+        if cid in forward:
+            out["precedes_ids"] = forward[cid]
+    return updated
+
+
 def _apply_draft_edits(draft: dict, review: dict) -> None:
     """Apply analyst edits to a draft in-place.
 
@@ -1306,16 +1428,22 @@ def _apply_draft_edits(draft: dict, review: dict) -> None:
     # The serializer converts these to Process SCOs at bundle time.
     # techniques: analyst can add/remove/edit technique mappings inline.
     # sequence_index / predecessor_indices: the Gate 2 flow editor's
-    # reorders. normalize reads both off the approved drafts to build the
-    # PRECEDES edges, so an edit here is what actually re-sequences the
-    # bundle. branch_point / convergence_point ride along as the same
-    # editor's flags.
+    # reorders. normalize reads both off the approved drafts for the
+    # relationship preview and the start_refs fallback — but the bundle's
+    # PRECEDES edges and operators are routed from the CHUNKS' precedes_ids,
+    # so gate_1 mirrors these edits back onto state.chunks (see
+    # _mirror_sequencing_onto_chunks) or the reorder would show in the
+    # review and vanish from the bundle. branch_point / convergence_point
+    # ride along as the same editor's flags; chain_root / chain_label are
+    # the chain-separation flags the serializer reads for start_refs and
+    # x_chain_label, mirrored the same way.
     _EDITABLE_FIELDS = {
         "name", "description", "platforms", "raw_command_lines",
         "confidence", "first_observed", "last_observed",
         "techniques",
         "sequence_index", "predecessor_indices",
         "branch_point", "convergence_point",
+        "chain_root", "chain_label",
     }
 
     for field_name, new_value in edits.items():

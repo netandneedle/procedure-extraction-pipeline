@@ -449,6 +449,28 @@ class DetectionRule:
     source_location: dict = field(default_factory=dict)
 
 
+# Chunk fields the analyst may overwrite at the chunk-review gate. ONE
+# definition: the API's ChunkDecisionItem validator and gate_chunks's
+# _apply_chunk_edits both filter on it. They used to carry separate copies,
+# and the API's lacked chain_root / chain_label — every chain-root flip from
+# the canvas was silently dropped before it reached state. A tuple, not a
+# set: the API joins it into a Field description and needs stable order.
+# chunk_id / sequence_index / predecessor_indices / precedes_ids /
+# source_span stay managed by the gate processor (or derived).
+CHUNK_EDITABLE_FIELDS: tuple[str, ...] = (
+    "text",
+    "source_excerpt",
+    "context",
+    "behavioral_confidence",
+    "branch_point",
+    "convergence_point",
+    # Chain-separation fields the analyst can flip when the chunker
+    # missed (or wrongly identified) a multi-intrusion boundary.
+    "chain_root",
+    "chain_label",
+)
+
+
 @dataclass
 class Chunk:
     """A discrete behavioral chunk from source material (Stage 2b).

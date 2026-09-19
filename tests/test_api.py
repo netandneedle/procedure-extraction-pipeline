@@ -813,6 +813,8 @@ class TestGateRoutes:
                         {"chunk_id": "ch-2", "action": "edit",
                          "edits": {"text": "Executed dropped binary",
                                    "behavioral_confidence": 0.95,
+                                   "chain_root": True,
+                                   "chain_label": "Veeam intrusion",
                                    "chunk_id": "should-be-stripped"}},
                     ],
                     "edges": [{"action": "remove", "from": "ch-1", "to": "ch-2"}],
@@ -831,6 +833,11 @@ class TestGateRoutes:
             assert "chunk_id" not in payload["decisions"][1]["edits"]
             # behavioral_confidence (whitelisted) survives.
             assert payload["decisions"][1]["edits"]["behavioral_confidence"] == 0.95
+            # The chain-separation flags survive too. The API used to keep
+            # its own copy of the whitelist without them, so every
+            # chain-root flip from the canvas was stripped here silently.
+            assert payload["decisions"][1]["edits"]["chain_root"] is True
+            assert payload["decisions"][1]["edits"]["chain_label"] == "Veeam intrusion"
             # Wire format uses JSON alias "from"; the route serializes with
             # by_alias=False so the dict checkpointed into state uses the
             # Python-safe field name "from_" instead of the reserved keyword

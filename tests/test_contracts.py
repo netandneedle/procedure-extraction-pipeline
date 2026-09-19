@@ -678,6 +678,19 @@ class TestReviewerRegistriesAgree:
             f"which gate_chunks would filter out"
         )
 
+    def test_api_and_gate_share_one_chunk_edit_whitelist(self):
+        """The API validator and gate_chunks filter on the SAME object.
+
+        Two copies drifted once: the API's lacked chain_root / chain_label,
+        so the canvas's chain-root checkbox wrote an edit the gate would have
+        applied and the validator threw away first.
+        """
+        from app.nodes import gates
+        from app.schemas import api
+
+        assert api._CHUNK_EDITABLE_FIELDS is gates._CHUNK_EDITABLE_FIELDS
+        assert {"chain_root", "chain_label"} <= set(api._CHUNK_EDITABLE_FIELDS)
+
     def test_reviewer_feedback_categories_exist(self):
         """Each gate's pinned-rule categories must be categories the
         flywheel actually files patterns under. A typo here is silent: the

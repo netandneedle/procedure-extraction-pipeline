@@ -614,6 +614,109 @@ class TestGate1:
         assert draft["convergence_point"] is False
         assert draft["gate_action"] == GateAction.EDIT.value
 
+    def test_chain_root_edit_applied(self, raw_drafts):
+        """chain_root / chain_label are what the serializer reads for the
+        attack-flow start_refs and x_chain_label; the technique gate is the
+        last place an analyst can fix them."""
+        reviews = [
+            {
+                "draft_id": "dft-002",
+                "action": "edit",
+                "analyst_edits": {"chain_root": True, "chain_label": "Veeam intrusion"},
+            },
+        ]
+        state = {"drafts": raw_drafts, "gates_enabled": True, "gate1_reviews": reviews}
+        result = gate_1(state)
+
+        assert "dft-002" in result["gate1_approved_draft_ids"]
+        draft = [d for d in raw_drafts if d["draft_id"] == "dft-002"][0]
+        assert draft["chain_root"] is True
+        assert draft["chain_label"] == "Veeam intrusion"
+
+    _TECH = [{"technique_id": "T1566.002", "technique_name": "Spearphishing Link",
+              "tactic": "initial-access", "confidence": 0.9}]
+
+    def _hourglass_state(self, reviews):
+        """Kit chunk wrongly drawn as the root with two lures hanging off it;
+        the reviews below invert that into lures -> kit."""
+        chunks = [
+            {"chunk_id": "c-kit", "sequence_index": 1, "predecessor_indices": [],
+             "precedes_ids": ["c-lure-a", "c-lure-b"], "chain_root": True,
+             "chain_label": "kit", "text": "exploit"},
+            {"chunk_id": "c-lure-a", "sequence_index": 2, "predecessor_indices": [1],
+             "precedes_ids": [], "chain_root": False, "chain_label": "A", "text": "lure a"},
+            {"chunk_id": "c-lure-b", "sequence_index": 3, "predecessor_indices": [1],
+             "precedes_ids": [], "chain_root": True, "chain_label": "B", "text": "lure b"},
+        ]
+        drafts = [
+            {"draft_id": "d-kit", "chunk_id": "c-kit", "name": "Exploit", "sequence_index": 1,
+             "predecessor_indices": [], "chain_root": True, "chain_label": "kit",
+             "techniques": list(self._TECH)},
+            {"draft_id": "d-a", "chunk_id": "c-lure-a", "name": "Lure A", "sequence_index": 2,
+             "predecessor_indices": [1], "chain_root": False, "chain_label": "A",
+             "techniques": list(self._TECH)},
+            {"draft_id": "d-b", "chunk_id": "c-lure-b", "name": "Lure B", "sequence_index": 3,
+             "predecessor_indices": [1], "chain_root": True, "chain_label": "B",
+             "techniques": list(self._TECH)},
+        ]
+        return chunks, {
+            "drafts": drafts, "chunks": chunks,
+            "gates_enabled": True, "gate1_reviews": reviews,
+        }
+
+    def test_sequencing_edit_mirrors_onto_chunks(self):
+        """The flow editor edits DRAFTS, but the bundle's PRECEDES edges and
+        operators are routed from the CHUNKS' precedes_ids. A reorder that
+        stayed on the drafts showed in every review surface and never reached
+        the bundle."""
+        chunks, state = self._hourglass_state([
+            {"draft_id": "d-kit", "action": "edit",
+             "analyst_edits": {"predecessor_indices": [2, 3], "chain_root": False}},
+            {"draft_id": "d-a", "action": "edit",
+             "analyst_edits": {"predecessor_indices": [], "chain_root": True}},
+            {"draft_id": "d-b", "action": "edit", "analyst_edits": {"predecessor_indices": []}},
+        ])
+        result = gate_1(state)
+
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["c-kit"]["predecessor_indices"] == [2, 3]
+        assert by_id["c-kit"]["precedes_ids"] == []
+        assert by_id["c-kit"]["chain_root"] is False
+        assert by_id["c-lure-a"]["precedes_ids"] == ["c-kit"]
+        assert by_id["c-lure-b"]["precedes_ids"] == ["c-kit"]
+        assert by_id["c-lure-a"]["chain_root"] is True
+        # The caller's chunk dicts are untouched.
+        assert chunks[0]["precedes_ids"] == ["c-lure-a", "c-lure-b"]
+        assert chunks[0]["chain_root"] is True
+
+    def test_sequencing_edit_sanitizes_predecessors(self):
+        """Nothing upstream validates predecessor_indices: a self-reference,
+        an unknown sequence and a non-int all get dropped on the chunk."""
+        chunks, state = self._hourglass_state([
+            {"draft_id": "d-a", "action": "edit",
+             "analyst_edits": {"predecessor_indices": [2, 99, "1", 1, 3]}},
+        ])
+        result = gate_1(state)
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["c-lure-a"]["predecessor_indices"] == [1, 3]
+        assert by_id["c-lure-b"]["precedes_ids"] == ["c-lure-a"]
+
+    def test_non_sequencing_edit_leaves_chunks_alone(self):
+        chunks, state = self._hourglass_state([
+            {"draft_id": "d-a", "action": "edit", "analyst_edits": {"name": "Renamed"}},
+        ])
+        result = gate_1(state)
+        assert "chunks" not in result
+
+    def test_sequencing_edit_without_chunks_returns_no_chunks(self, raw_drafts):
+        reviews = [
+            {"draft_id": "dft-003", "action": "edit",
+             "analyst_edits": {"sequence_index": 1, "predecessor_indices": []}},
+        ]
+        state = {"drafts": raw_drafts, "gates_enabled": True, "gate1_reviews": reviews}
+        result = gate_1(state)
+        assert "chunks" not in result
+
     def test_reject_wrong_technique_routes_to_extract(self, raw_drafts):
         """WRONG_TECHNIQUE rejection routes to extract_techniques."""
         reviews = [
@@ -2080,6 +2183,60 @@ class TestGateChunks:
         ch1 = next(c for c in result["chunks"] if c["chunk_id"] == "ch-1")
         assert ch1["precedes_ids"] == ["ch-3"], "chain must bridge, not sever"
 
+    def test_edge_add_syncs_predecessor_indices(self):
+        """precedes_ids is what the gate edits; predecessor_indices is what
+        drafting copies onto the draft and the later gates read. Until this
+        sync existed, an edge drawn here reached the bundle but the technique
+        gate's flow view and the bundle-gate preview kept the old graph.
+        """
+        chunks = [
+            {"chunk_id": "ch-1", "sequence_index": 1, "predecessor_indices": [], "precedes_ids": []},
+            {"chunk_id": "ch-2", "sequence_index": 2, "predecessor_indices": [], "precedes_ids": []},
+        ]
+        state = {
+            "chunks": chunks,
+            "gates_enabled": {"chunks": True},
+            "chunk_reviews": {"edges": [{"action": "add", "from_": "ch-1", "to": "ch-2"}]},
+        }
+        result = gate_chunks(state)
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["ch-1"]["precedes_ids"] == ["ch-2"]
+        assert by_id["ch-2"]["predecessor_indices"] == [1]
+        assert by_id["ch-1"]["predecessor_indices"] == []
+
+    def test_edge_remove_syncs_predecessor_indices(self):
+        chunks = [
+            {"chunk_id": "ch-1", "sequence_index": 1, "predecessor_indices": [], "precedes_ids": ["ch-2"]},
+            {"chunk_id": "ch-2", "sequence_index": 2, "predecessor_indices": [1], "precedes_ids": []},
+        ]
+        state = {
+            "chunks": chunks,
+            "gates_enabled": {"chunks": True},
+            "chunk_reviews": {"edges": [{"action": "remove", "from_": "ch-1", "to": "ch-2"}]},
+        }
+        result = gate_chunks(state)
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["ch-1"]["precedes_ids"] == []
+        assert by_id["ch-2"]["predecessor_indices"] == []
+
+    def test_drop_rewire_syncs_predecessor_indices(self):
+        """1 -> 2 -> 3, drop 2: ch-3's predecessors must name 1, not the
+        chunk that no longer exists."""
+        chunks = [
+            {"chunk_id": "ch-1", "sequence_index": 1, "predecessor_indices": [], "precedes_ids": ["ch-2"]},
+            {"chunk_id": "ch-2", "sequence_index": 2, "predecessor_indices": [1], "precedes_ids": ["ch-3"]},
+            {"chunk_id": "ch-3", "sequence_index": 3, "predecessor_indices": [2], "precedes_ids": []},
+        ]
+        state = {
+            "chunks": chunks,
+            "gates_enabled": {"chunks": True},
+            "chunk_reviews": {"decisions": [{"chunk_id": "ch-2", "action": "drop"}]},
+        }
+        result = gate_chunks(state)
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["ch-1"]["precedes_ids"] == ["ch-3"]
+        assert by_id["ch-3"]["predecessor_indices"] == [1]
+
     def test_consecutive_drops_collapse(self):
         """1 -> 2 -> 3 -> 4 with 2 and 3 dropped leaves 1 -> 4."""
         chunks = [
@@ -2500,6 +2657,17 @@ class TestGateChunksMerge:
         )
         survivor = next(c for c in result["chunks"] if c["chunk_id"] == "c2")
         assert survivor["precedes_ids"] == ["c4"]
+
+    def test_merge_syncs_predecessor_indices(self):
+        """c1 -> c2 -> c4 after absorbing c3: c4's predecessors name c2 (2),
+        not the absorbed c3 (3)."""
+        result = self._merge(
+            [{"chunk_id": "c2", "action": "merge", "merge_with": ["c3"]}],
+        )
+        by_id = {c["chunk_id"]: c for c in result["chunks"]}
+        assert by_id["c4"]["predecessor_indices"] == [2]
+        assert by_id["c2"]["predecessor_indices"] == [1]
+        assert by_id["c1"]["predecessor_indices"] == []
 
     def test_analyst_supplied_text_wins_over_concatenation(self):
         result = self._merge([{
