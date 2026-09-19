@@ -690,12 +690,12 @@ class TestDraftToProcedure:
 
     def test_platforms_set(self, sample_drafts):
         """Platforms are mapped to x_platforms."""
-        draft = sample_drafts[0]  # has ["linux::server", "windows::server"]
+        draft = sample_drafts[0]  # has ["Linux", "Windows::Server"]
         ndraft = asdict(NormalizedDraft(draft_id="dft-001", composite_confidence=85))
 
         proc = _draft_to_procedure(draft, ndraft, "identity--source-001")
         assert "x_platforms" in proc
-        assert "linux::server" in proc["x_platforms"]
+        assert "Linux" in proc["x_platforms"]
 
 
 # ── _detect_hash_type ─────────────────────────────────────────────

