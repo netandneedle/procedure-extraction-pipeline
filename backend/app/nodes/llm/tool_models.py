@@ -65,6 +65,8 @@ class EntityItem(_StrictBase):
     context_snippet: str | None = None
     organization_role: str | None = None
     location_role: str | None = None
+    # Defaulted so cached responses predating the field still validate.
+    attributed_to: list[str] = Field(default_factory=list)
 
 
 class DetectionRuleItem(_StrictBase):

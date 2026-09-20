@@ -111,6 +111,18 @@ function ChunkNode({ data }) {
             {tacticChip}
           </span>
         ) : <span />}
+        {/* Deterministic flow warnings from the chunker: today, an incoming
+            edge that runs from a later tactic to an earlier one — the report's
+            exposition order taken as attack order. Warn-only; the analyst
+            decides whether it is an inversion or a genuine loop-back. */}
+        {Array.isArray(chunk.flow_warnings) && chunk.flow_warnings.length > 0 && (
+          <span
+            title={chunk.flow_warnings.join("\n")}
+            className="text-[9px] font-data uppercase tracking-wide text-gb-bright-yellow no-underline mr-1 cursor-help"
+          >
+            ⚠ order
+          </span>
+        )}
         {/* The AI flag rides alongside the analyst's own state rather than
             replacing it: "this is edited AND the reviewer wants it dropped"
             is the case worth seeing at a glance. Approvals are not flagged —
@@ -1874,6 +1886,11 @@ export default function ChunkReviewCanvas({
       const patch = {};
       if (rec.edited_text) patch.text = rec.edited_text;
       if (rec.edited_source_excerpt) patch.source_excerpt = rec.edited_source_excerpt;
+      // Chain fields: the reviewer's fix for a shared capability mis-rooted
+      // as a chain (a kit made the sole entry point). Booleans are applied
+      // as sent — `false` is a real edit here, not an absence.
+      if (typeof rec.edited_chain_root === "boolean") patch.chain_root = rec.edited_chain_root;
+      if (rec.edited_chain_label) patch.chain_label = rec.edited_chain_label;
       if (Object.keys(patch).length) {
         setEdits((prev) => ({ ...prev, [chunkId]: { ...(prev[chunkId] || {}), ...patch } }));
       }

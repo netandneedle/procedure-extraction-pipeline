@@ -1726,3 +1726,66 @@ class TestExtensionDefinitions:
         src = "".join(inspect.getsource(m) for m in (attack_operators, attack_conditions, serialization))
         assert "677b4ce7" not in src
         assert "53cf6cc8" not in src
+
+
+class TestAnalystAddedRels:
+    """_analyst_added_rels resolves endpoints by (name, type) and never
+    guesses: an unresolvable row is skipped and logged, a duplicate of an
+    SRO already built is skipped silently."""
+
+    BY_NAME = {
+        ("ta412", "intrusion-set"): "intrusion-set--a",
+        ("cobalt strike", "malware"): "malware--m",
+        ("cobalt strike", "tool"): "tool--t",
+        ("mss", "threat-actor"): "threat-actor--s",
+    }
+
+    def _run(self, state, existing=()):
+        from app.nodes.deterministic.serialization import _analyst_added_rels
+        return _analyst_added_rels(state, self.BY_NAME, list(existing), "identity--src")
+
+    def test_typed_row_resolves(self):
+        out = self._run({"gate2_added_rels": [
+            {"relationship_type": "uses", "source_name": "TA412", "source_type": "intrusion-set",
+             "target_name": "Cobalt Strike", "target_type": "malware"},
+        ]})
+        assert [(r["source_ref"], r["relationship_type"], r["target_ref"]) for r in out] == [
+            ("intrusion-set--a", "uses", "malware--m"),
+        ]
+
+    def test_untyped_row_resolves_only_when_the_name_is_unambiguous(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING):
+            out = self._run({"gate2_added_rels": [
+                # "Cobalt Strike" is both a malware and a tool node: ambiguous.
+                {"relationship_type": "uses", "source_name": "TA412", "target_name": "Cobalt Strike"},
+                # "MSS" is unique.
+                {"relationship_type": "attributed-to", "source_name": "TA412", "target_name": "MSS"},
+            ]})
+        assert [(r["source_ref"], r["target_ref"]) for r in out] == [("intrusion-set--a", "threat-actor--s")]
+        assert "not resolvable" in caplog.text
+
+    def test_unknown_name_is_skipped_not_fabricated(self):
+        out = self._run({"gate2_added_rels": [
+            {"relationship_type": "uses", "source_name": "TA412", "source_type": "intrusion-set",
+             "target_name": "Nonexistent", "target_type": "malware"},
+        ]})
+        assert out == []
+
+    def test_edited_rows_and_duplicates(self):
+        existing = [{"source_ref": "intrusion-set--a", "relationship_type": "uses", "target_ref": "malware--m"}]
+        out = self._run({
+            "gate2_added_rels": [
+                {"relationship_type": "uses", "source_name": "TA412", "source_type": "intrusion-set",
+                 "target_name": "Cobalt Strike", "target_type": "malware"},   # duplicate of existing
+            ],
+            "gate2_edited_rels": [
+                {"rel_id": "r1", "original": {}, "edited": {
+                    "relationship_type": "attributed-to", "source_name": "TA412",
+                    "source_type": "intrusion-set", "target_name": "MSS", "target_type": "threat-actor",
+                }},
+            ],
+        }, existing)
+        assert [(r["source_ref"], r["relationship_type"], r["target_ref"]) for r in out] == [
+            ("intrusion-set--a", "attributed-to", "threat-actor--s"),
+        ]

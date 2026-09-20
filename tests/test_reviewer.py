@@ -1486,6 +1486,38 @@ class TestChunkFlowSummary:
         assert "1 connected piece." in out
         assert "new chain" not in out
 
+    def test_a_shared_segment_is_named_with_its_entry_points(self):
+        """Two lures converge on a kit: the summary names the kit as a
+        shared entry so the reviewer sees the hourglass without deriving it
+        from fifteen adjacency lists."""
+        out = self._summary([
+            {"chunk_id": "lure-a", "sequence_index": 1, "precedes_ids": ["kit"], "chain_root": True},
+            {"chunk_id": "lure-b", "sequence_index": 2, "precedes_ids": ["kit"], "chain_root": True},
+            {"chunk_id": "kit", "sequence_index": 3, "precedes_ids": ["tail-a", "tail-b"]},
+            {"chunk_id": "tail-a", "sequence_index": 4, "precedes_ids": []},
+            {"chunk_id": "tail-b", "sequence_index": 5, "precedes_ids": []},
+        ])
+        assert "Shared segments" in out
+        assert "kit (entered from lure-a, lure-b)" in out
+
+    def test_a_plain_convergence_inside_one_chain_is_not_called_shared(self):
+        out = self._summary([
+            {"chunk_id": "a", "sequence_index": 1, "precedes_ids": ["b", "c"]},
+            {"chunk_id": "b", "sequence_index": 2, "precedes_ids": ["d"]},
+            {"chunk_id": "c", "sequence_index": 3, "precedes_ids": ["d"]},
+            {"chunk_id": "d", "sequence_index": 4, "precedes_ids": []},
+        ])
+        assert "Shared segments" not in out
+
+    def test_tactic_order_warnings_are_listed(self):
+        out = self._summary([
+            {"chunk_id": "kit", "sequence_index": 1, "precedes_ids": ["lure"]},
+            {"chunk_id": "lure", "sequence_index": 2, "precedes_ids": [],
+             "flow_warnings": ["kit (execution) precedes lure (initial-access): later tactic before earlier one"]},
+        ])
+        assert "Tactic-order warnings" in out
+        assert "lure" in out
+
     def test_edges_to_chunks_that_do_not_exist_are_ignored(self):
         """A dangling precedes_id is tolerated downstream, so counting it
         here would report an edge the canvas does not draw."""

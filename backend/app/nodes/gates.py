@@ -57,6 +57,7 @@ from app.graph.state import (
     CHUNK_EDITABLE_FIELDS,
     ChunkGateRejectReason,
     ChunkProblemType,
+    EntityType,
     GateAction,
     Gate1RejectReason,
     PipelineState,
@@ -757,6 +758,10 @@ def _build_added_entity(raw: dict) -> dict:
     for field in ("organization_role", "location_role"):
         if raw.get(field):
             entity[field] = raw[field]
+    if entity["entity_type"] == EntityType.INTRUSION_SET.value:
+        # No sponsorship claim for an analyst-added cluster: the serializer
+        # attributes only from this list (or the single-actor fallback).
+        entity["attributed_to"] = []
     return entity
 
 
@@ -1807,6 +1812,7 @@ def gate_2(state: PipelineState) -> dict:
             ],
             "gate2_removed_rel_ids": [],
             "gate2_added_rels": [],
+            "gate2_edited_rels": [],
             "status": PipelineStatus.RESUMING_FROM_GATE_2.value,
             "current_node": "gate_2",
         }
@@ -1841,6 +1847,7 @@ def gate_2(state: PipelineState) -> dict:
             "gate2_approved_rel_ids": all_rel_ids,
             "gate2_removed_rel_ids": [],
             "gate2_added_rels": [],
+            "gate2_edited_rels": [],
             "status": PipelineStatus.RESUMING_FROM_GATE_2.value,
             "current_node": "gate_2",
         }
@@ -1851,6 +1858,7 @@ def gate_2(state: PipelineState) -> dict:
             "gate2_approved_rel_ids": [],
             "gate2_removed_rel_ids": all_rel_ids,
             "gate2_added_rels": [],
+            "gate2_edited_rels": [],
             "status": PipelineStatus.RESUMING_FROM_GATE_2.value,
             "current_node": "gate_2",
         }
@@ -1872,13 +1880,17 @@ def _process_per_relationship_reviews(
     """
     removed_ids: list[str] = []
     added_rels: list[dict] = []
+    edited_rels: list[dict] = []
     feedback_parts: list[str] = []
 
-    # Deep-copy previews to avoid mutating state in place (LangGraph requirement)
+    # Read-only view of the preview. An edit is recorded as {original,
+    # edited} rather than applied in place: the serializer removes the
+    # original's key and emits the edited row, so the preview stays the
+    # record of what normalize derived and nothing re-keys under the
+    # analyst's feet.
     preview_by_id = {
-        r.get("id", ""): dict(r) for r in state.get("relationship_preview", [])
+        r.get("id", ""): r for r in state.get("relationship_preview", [])
     }
-    edited_previews = False
 
     # Track explicit-approve / explicit-edit IDs so we can compute the
     # "unmentioned" set later.
@@ -1893,11 +1905,15 @@ def _process_per_relationship_reviews(
             rationale = rationale[:500]
 
         if rel_id.startswith("added_"):
-            # Analyst-added relationship (not in original preview)
+            # Analyst-added relationship (not in original preview). The
+            # endpoint types come from the canvas; the serializer resolves
+            # (name, type) to a STIX id and skips what it cannot name.
             added_rels.append({
                 "relationship_type": review.get("edited_rel_type", "uses"),
                 "source_name": review.get("edited_source", ""),
                 "target_name": review.get("edited_target", ""),
+                "source_type": review.get("edited_source_type") or "",
+                "target_type": review.get("edited_target_type") or "",
                 "rationale": rationale,
             })
             logger.info("Gate 2: analyst added relationship: %s -> %s -> %s",
@@ -1919,18 +1935,31 @@ def _process_per_relationship_reviews(
                     f"{preview.get('target_name', '')}: {rationale}"
                 )
         elif action == "edit":
-            # Edited relationships are approved with modifications.
-            # Apply edits to the copied preview dict (not the state original).
+            # Edited relationships are approved with modifications: the
+            # serializer drops the ORIGINAL row's key and emits the edited
+            # row. Endpoint types default to the original's — the canvas
+            # only ever edits the verb by hand, and the reviewer's edits
+            # carry names without types.
             explicitly_handled.add(rel_id)
             preview = preview_by_id.get(rel_id)
             if preview:
+                edited = dict(preview)
                 if review.get("edited_rel_type"):
-                    preview["relationship_type"] = review["edited_rel_type"]
+                    edited["relationship_type"] = review["edited_rel_type"]
                 if review.get("edited_source"):
-                    preview["source_name"] = review["edited_source"]
+                    edited["source_name"] = review["edited_source"]
                 if review.get("edited_target"):
-                    preview["target_name"] = review["edited_target"]
-                edited_previews = True
+                    edited["target_name"] = review["edited_target"]
+                if review.get("edited_source_type"):
+                    edited["source_type"] = review["edited_source_type"]
+                if review.get("edited_target_type"):
+                    edited["target_type"] = review["edited_target_type"]
+                edited["rationale"] = rationale
+                edited_rels.append({
+                    "rel_id": rel_id,
+                    "original": dict(preview),
+                    "edited": edited,
+                })
 
     # Default-approve: every rel from the preview that wasn't explicitly
     # removed gets approved. This matches the auto-skip path and the
@@ -1954,8 +1983,8 @@ def _process_per_relationship_reviews(
     feedback = "\n".join(feedback_parts) if feedback_parts else None
 
     logger.info(
-        "Gate 2: %d approved, %d removed, %d added",
-        len(approved_ids), len(removed_ids), len(added_rels),
+        "Gate 2: %d approved, %d removed, %d added, %d edited",
+        len(approved_ids), len(removed_ids), len(added_rels), len(edited_rels),
     )
 
     result = {
@@ -1963,6 +1992,7 @@ def _process_per_relationship_reviews(
         "gate2_approved_rel_ids": approved_ids,
         "gate2_removed_rel_ids": removed_ids,
         "gate2_added_rels": added_rels,
+        "gate2_edited_rels": edited_rels,
         # Clear the consumed channel, matching gate_0 and gate_chunks. Left
         # set, a follow-up BATCH submission would be shadowed: the dispatch
         # checks `gate2_reviews is not None` first and would take the per-rel
@@ -1971,9 +2001,5 @@ def _process_per_relationship_reviews(
         "status": PipelineStatus.RESUMING_FROM_GATE_2.value,
         "current_node": "gate_2",
     }
-
-    # Write back edited previews so the serializer sees the analyst's corrections
-    if edited_previews:
-        result["relationship_preview"] = list(preview_by_id.values())
 
     return result

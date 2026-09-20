@@ -36,7 +36,9 @@ from app.graph.state import (
     GateAction,
     PipelineState,
     PipelineStatus,
+    PRE_COMPROMISE_MAX_RANK,
     SectionClassification,
+    tactic_rank,
 )
 from app.nodes.llm._definitions import PROCEDURE_DEFINITION
 from app.nodes.llm.llm_adapter import call_llm
@@ -313,8 +315,11 @@ CHUNK_BEHAVIORS_TOOL = {
                                 "to (e.g. 'SharePoint primary intrusion', 'Veeam intrusion', "
                                 "'April 2026 incident'). REQUIRED when chain_root=True; "
                                 "optional otherwise (chunks downstream of a chain root inherit "
-                                "the label at processing time). Used for analyst review chips "
-                                "in the chunk-review canvas. Keep under ~40 chars."
+                                "the label at processing time) — EXCEPT downstream of a shared "
+                                "segment, where inheritance stops and every campaign tail must "
+                                "set its own label. Chunks of a shared capability carry the "
+                                "capability's label. Used for analyst review chips in the "
+                                "chunk-review canvas. Keep under ~40 chars."
                             ),
                         },
                         "convergence_point": {
@@ -322,7 +327,9 @@ CHUNK_BEHAVIORS_TOOL = {
                             "description": (
                                 "True if multiple prior paths merge at this action. "
                                 "E.g., 'after both lateral movement paths completed, "
-                                "the actor consolidated access on the DC.'"
+                                "the actor consolidated access on the DC.' Also true for "
+                                "the first chunk of a SHARED segment, where several "
+                                "campaigns' entry chunks converge."
                             ),
                         },
                         "precondition": {
@@ -600,11 +607,12 @@ When deciding whether to split or merge, work through the questions in this orde
 EMISSION ORDER — walk the kill chain:
 Order chunks chronologically by ATT&CK tactic phase: Reconnaissance → Resource Development → Initial Access → Execution → Persistence → Privilege Escalation → Defense Evasion → Credential Access → Discovery → Lateral Movement → Collection → Command and Control → Exfiltration → Impact.
 A single chunk may span multiple tactics (per the procedure definition); when ordering chunks, use the EARLIEST tactic phase the chunk's objective touches.
+Sequence follows the ADVERSARY'S TIMELINE, not the report's exposition. Vendors lead with the most interesting capability (the exploit kit, the novel loader) and describe how victims reached it later; the chunk for that capability still comes AFTER the delivery step that reaches it. A predecessor edge that runs from a later tactic to an earlier one (execution before initial-access) is flagged downstream as a likely inversion.
 
 PREDECESSOR RULE (do not produce disconnected sequences):
 - The FIRST chunk in the kill chain has predecessor_indices=[] (empty).
 - EVERY OTHER chunk MUST have at least one predecessor_indices entry, even if the action is loosely connected to what came before. Default to the immediately-prior chunk's sequence_index when the source doesn't describe an explicit dependency.
-- An empty predecessor_indices on a non-first chunk creates a disconnected sub-graph in the attack flow and is treated as a bug. If you genuinely think a chunk starts a new independent sub-flow, you are probably looking at TWO separate intrusions — see CHAIN ROOT RULE below.
+- An empty predecessor_indices on a non-first chunk creates a disconnected sub-graph in the attack flow and is treated as a bug. If you genuinely think a chunk starts a new independent sub-flow, you are probably looking at TWO separate intrusions (CHAIN ROOT RULE below) — or at several campaigns that share one capability (SHARED SEGMENT RULE below).
 - For convergence (chunk has multiple direct predecessors), list every predecessor sequence_index. For branches, the branch_point=True chunk has one predecessor; multiple downstream chunks share that predecessor.
 
 CHAIN ROOT RULE (multi-intrusion sources):
@@ -617,6 +625,21 @@ When you encounter a chunk that begins a NEW, distinct attack chain (typically s
 4. Subsequent chunks WITHIN that new chain link normally via predecessor_indices and inherit the same chain_label.
 
 The default chain_label for the FIRST chunk in the entire source is the primary chain's label (e.g. "SharePoint primary intrusion"). Set it on chunk 1.
+
+SHARED SEGMENT RULE (one capability, several chains):
+Some reports describe ONE capability once — an exploit kit, a loader chain, a shared C2 framework, staging infrastructure — and then describe several campaigns or actors that each enter it and continue differently afterwards. That is not several disjoint chains and it is not one chain: it is an hourglass. Chunk it as one:
+1. Chunk the shared capability ONCE, in the order its steps execute. Give every chunk of it the SAME chain_label naming the capability (e.g. "BlueMoon exploit kit — shared"). Do not attribute these chunks to any one campaign.
+2. Each campaign's ENTRY chunk (its lure, its initial access) is chain_root=True with the campaign's own chain_label and predecessor_indices=[] — exactly like a separate chain.
+3. The shared segment's FIRST chunk lists EVERY campaign entry in predecessor_indices (it is a convergence point). The shared segment's LAST chunk is a branch_point whose successors are the campaign-specific continuations.
+4. Every campaign's continuation ("tail") chunks carry that campaign's chain_label EXPLICITLY. A label cannot be inherited across a shared chunk, so leave none blank there.
+Worked example — a report describes exploit kit K used by campaigns A and B, each with its own phishing lure and its own payload:
+  1 "Campaign A lure: spearphishing link to actor domain"     chain_root=True  chain_label="Campaign A"  predecessor_indices=[]
+  2 "Campaign B lure: RFQ-themed email linking to a Worker"    chain_root=True  chain_label="Campaign B"  predecessor_indices=[]
+  3 "K exploits the browser and escapes the sandbox"           chain_label="K exploit kit — shared"  predecessor_indices=[1, 2]  convergence_point=True
+  4 "K injects a stub and downloads the stage-two payload"     chain_label="K exploit kit — shared"  predecessor_indices=[3]     branch_point=True
+  5 "Campaign A installs its browser-extension backdoor"       chain_label="Campaign A"  predecessor_indices=[4]
+  6 "Campaign B sideloads its DLL and sets a scheduled task"   chain_label="Campaign B"  predecessor_indices=[4]
+The report may well describe K first and the campaigns later; the sequence above is the adversary's, not the author's.
 
 POSITIVE EXAMPLES (chain_root=True):
 - "Following ransomware deployment, we identified a separate earlier attack chain involving Veeam Backup..." → next chunk = chain_root=True, chain_label="Veeam intrusion"
@@ -664,6 +687,7 @@ SEQUENCING (ATT&CK FLOW):
 - Convergence: a chunk has multiple predecessor_indices
 - branch_point: true when the adversary splits into parallel activities
 - convergence_point: true when parallel activities rejoin
+- Shared segment (SHARED SEGMENT RULE): campaign entries are chain roots that all precede the segment's first chunk; the segment's last chunk branches to the campaign tails
 
 CONFIDENCE SCORING:
 - 1.0: Detailed, specific objective with concrete tools and command lines
@@ -1396,6 +1420,9 @@ def _postprocess_raw_chunks(raw_chunks: list[dict]) -> list[dict]:
             # lists so an empty {} is preserved (the chunker emits per-category
             # arrays only for categories that apply).
             "artifacts": _normalize_artifacts(raw.get("artifacts", {})),
+            # Filled by _finalize_chunks (tactic-order backstop); a fresh
+            # list per chunk so nothing is shared across dicts.
+            "flow_warnings": [],
             # Chain-separation passthrough. _finalize_chunks honors chain_root
             # by skipping the orphan-link backstop; downstream chunks inside
             # the same chain inherit chain_label.
@@ -1476,6 +1503,14 @@ def _fuzzy_find_excerpt(
         if idx >= 0:
             return _span(idx, len(prefix))
     return None
+
+
+def _primary_tactic(chunk: dict) -> str:
+    """First entry of context.tactics — the chunker's 'primary' tactic."""
+    tactics = (chunk.get("context") or {}).get("tactics") or []
+    if not isinstance(tactics, list) or not tactics:
+        return ""
+    return str(tactics[0] or "").strip().lower()
 
 
 def _finalize_chunks(
@@ -1640,19 +1675,43 @@ def _finalize_chunks(
     has_explicit_root = any(c.get("chain_root") for c in chunks)
     if not has_explicit_root and 1 in by_seq:
         by_seq[1].setdefault("chain_label", "")  # leave empty by default
+    # Which chain roots reach each chunk. A chunk reachable from two or
+    # more roots is a SHARED segment (an exploit kit four campaigns enter)
+    # or a tail behind one: it belongs to no single chain, so no root's
+    # label may be stamped on it and no root's walk may continue through
+    # it. Without this, the first root in list order dragged its label
+    # across the shared chunk into every other campaign's tail.
+    roots = [c for c in chunks if c.get("chain_root")]
+    reaching: dict[int, set[int]] = defaultdict(set)
+    for root in roots:
+        root_seq = root.get("sequence_index", 0)
+        stack = [root_seq]
+        visited: set[int] = set()
+        while stack:
+            cur = stack.pop()
+            if cur in visited:
+                continue
+            visited.add(cur)
+            reaching[cur].add(root_seq)
+            stack.extend(n for n in forward_adj.get(cur, []) if n not in visited)
+    shared_seqs = {seq for seq, rs in reaching.items() if len(rs) >= 2}
+
     # BFS from each chain_root, propagating its label to downstream chunks
-    # that don't have an explicit label.
-    for root in [c for c in chunks if c.get("chain_root")]:
+    # that don't have an explicit label, stopping at shared chunks.
+    for root in roots:
         label = root.get("chain_label", "")
         if not label:
             continue
+        root_seq = root.get("sequence_index", 0)
         seen: set[int] = set()
-        queue: list[int] = [root.get("sequence_index", 0)]
+        queue: list[int] = [root_seq]
         while queue:
             cur = queue.pop(0)
             if cur in seen:
                 continue
             seen.add(cur)
+            if cur in shared_seqs and cur != root_seq:
+                continue
             cur_chunk = by_seq.get(cur)
             if cur_chunk is None:
                 continue
@@ -1661,6 +1720,15 @@ def _finalize_chunks(
             for nxt in forward_adj.get(cur, []):
                 if nxt not in seen:
                     queue.append(nxt)
+    for seq in sorted(shared_seqs):
+        shared_chunk = by_seq.get(seq)
+        if shared_chunk is not None and not shared_chunk.get("chain_label"):
+            logger.warning(
+                "chunk_behaviors: chunk %s is reachable from %d chains and has no "
+                "chain_label — the chunker should label shared segments and every "
+                "tail behind them explicitly (SHARED SEGMENT RULE)",
+                shared_chunk.get("chunk_id"), len(reaching[seq]),
+            )
 
     # Build forward edges by inverting predecessor_indices.
     # predecessor_indices on chunk B with value [A_seq] means A precedes B,
@@ -1674,6 +1742,38 @@ def _finalize_chunks(
 
     for chunk in chunks:
         chunk["precedes_ids"] = forward[chunk["chunk_id"]]
+
+    # Tactic-order backstop. The prompt says sequence follows the
+    # adversary's timeline, not the report's exposition; the model still
+    # follows the document when a vendor leads with the exploit kit and
+    # describes the lures later. The deterministic signature of that
+    # inversion is an edge INTO a pre-compromise step (reconnaissance,
+    # resource development, initial access) from anything later — an
+    # exploit chunk preceding the lure that delivers it. Post-compromise
+    # tactics are not checked: real intrusions interleave them freely
+    # (download, then persist; beacon, then collect), and on a first live run
+    # every warning raised past initial access was one of those. Warn on the
+    # target chunk, never rewrite.
+    for chunk in chunks:
+        chunk.setdefault("flow_warnings", [])
+        tgt_tactic = _primary_tactic(chunk)
+        tgt_rank = tactic_rank(tgt_tactic)
+        if tgt_rank is None or tgt_rank > PRE_COMPROMISE_MAX_RANK:
+            continue
+        for pred_seq in chunk.get("predecessor_indices", []) or []:
+            pred = by_seq.get(pred_seq)
+            if pred is None:
+                continue
+            src_tactic = _primary_tactic(pred)
+            src_rank = tactic_rank(src_tactic)
+            if src_rank is None or src_rank <= tgt_rank:
+                continue
+            msg = (
+                f"{pred.get('chunk_id')} ({src_tactic}) precedes "
+                f"{chunk.get('chunk_id')} ({tgt_tactic}): later tactic before earlier one"
+            )
+            chunk["flow_warnings"].append(msg)
+            logger.warning("chunk_behaviors: flow order warning — %s", msg)
 
     # Resolve precondition indices -> chunk_ids and validate the partition
     # against precedes_ids. Conditions that fail validation are dropped with

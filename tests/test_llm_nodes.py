@@ -1191,6 +1191,141 @@ class TestChainRootBackstop:
         ch2 = next(c for c in out if c["chunk_id"] == "ch-2")
         assert ch2["chain_label"] == "explicit-override"
 
+    # ── Shared segments (SHARED SEGMENT RULE) ──────────────────────────
+    #
+    # Two campaign lures (chain roots) converge on a shared exploit kit,
+    # which branches into two campaign tails. Before the shared-segment
+    # rule, the first root's BFS walked through the kit and stamped BOTH
+    # tails with campaign A's label.
+
+    @staticmethod
+    def _hourglass(kit_label="kit — shared", tail_a_label="A", tail_b_label="B"):
+        return [
+            {"chunk_id": "lure-a", "sequence_index": 1, "predecessor_indices": [],
+             "source_excerpt": "", "chain_root": True, "chain_label": "A"},
+            {"chunk_id": "lure-b", "sequence_index": 2, "predecessor_indices": [],
+             "source_excerpt": "", "chain_root": True, "chain_label": "B"},
+            {"chunk_id": "kit", "sequence_index": 3, "predecessor_indices": [1, 2],
+             "source_excerpt": "", "chain_root": False, "chain_label": kit_label},
+            {"chunk_id": "tail-a", "sequence_index": 4, "predecessor_indices": [3],
+             "source_excerpt": "", "chain_root": False, "chain_label": tail_a_label},
+            {"chunk_id": "tail-b", "sequence_index": 5, "predecessor_indices": [3],
+             "source_excerpt": "", "chain_root": False, "chain_label": tail_b_label},
+        ]
+
+    def test_shared_chunk_keeps_explicit_label(self):
+        out = _finalize_chunks(self._hourglass(), "")
+        labels = {c["chunk_id"]: c["chain_label"] for c in out}
+        assert labels["kit"] == "kit — shared"
+        assert labels["tail-a"] == "A"
+        assert labels["tail-b"] == "B"
+
+    def test_shared_chunk_without_label_is_not_stamped_and_warns(self, caplog):
+        """A chunk two roots reach belongs to neither; the first root in
+        list order must not claim it."""
+        import logging
+        with caplog.at_level(logging.WARNING):
+            out = _finalize_chunks(self._hourglass(kit_label=""), "")
+        kit = next(c for c in out if c["chunk_id"] == "kit")
+        assert kit["chain_label"] == ""
+        assert "reachable from 2 chains" in caplog.text
+
+    def test_tail_after_shared_segment_is_not_stamped_by_first_root(self):
+        """Inheritance stops at the shared chunk: an unlabelled tail stays
+        unlabelled rather than becoming campaign A's by list order."""
+        out = _finalize_chunks(self._hourglass(tail_b_label=""), "")
+        tail_b = next(c for c in out if c["chunk_id"] == "tail-b")
+        assert tail_b["chain_label"] == ""
+        tail_a = next(c for c in out if c["chunk_id"] == "tail-a")
+        assert tail_a["chain_label"] == "A"
+
+    def test_single_chain_source_unchanged(self):
+        """No shared chunk: propagation behaves exactly as before."""
+        chunks = [
+            {"chunk_id": "ch-1", "sequence_index": 1, "predecessor_indices": [],
+             "source_excerpt": "", "chain_root": True, "chain_label": "Primary"},
+            {"chunk_id": "ch-2", "sequence_index": 2, "predecessor_indices": [1],
+             "source_excerpt": "", "chain_root": False, "chain_label": ""},
+            {"chunk_id": "ch-3", "sequence_index": 3, "predecessor_indices": [2],
+             "source_excerpt": "", "chain_root": False, "chain_label": ""},
+        ]
+        out = _finalize_chunks(chunks, "")
+        assert [c["chain_label"] for c in out] == ["Primary", "Primary", "Primary"]
+
+
+class TestTacticOrderWarnings:
+    """_finalize_chunks flags an edge INTO a pre-compromise step
+    (reconnaissance / resource development / initial access) from a later
+    tactic — an exploit preceding the lure that delivers it: the signature
+    of the report's exposition order being taken as attack order. Warn-only,
+    and only for pre-compromise targets."""
+
+    @staticmethod
+    def _chunk(cid, seq, preds, tactics):
+        return {"chunk_id": cid, "sequence_index": seq, "predecessor_indices": preds,
+                "source_excerpt": "", "context": {"tactics": tactics}}
+
+    def test_later_tactic_before_earlier_one_warns_on_the_target(self):
+        chunks = [
+            self._chunk("kit", 1, [], ["execution", "privilege-escalation"]),
+            self._chunk("lure", 2, [1], ["initial-access"]),
+        ]
+        out = _finalize_chunks(chunks, "")
+        lure = next(c for c in out if c["chunk_id"] == "lure")
+        kit = next(c for c in out if c["chunk_id"] == "kit")
+        assert len(lure["flow_warnings"]) == 1
+        assert "kit (execution) precedes lure (initial-access)" in lure["flow_warnings"][0]
+        assert kit["flow_warnings"] == []
+
+    def test_kill_chain_order_does_not_warn(self):
+        chunks = [
+            self._chunk("lure", 1, [], ["initial-access"]),
+            self._chunk("kit", 2, [1], ["execution"]),
+            self._chunk("persist", 3, [2], ["persistence"]),
+        ]
+        out = _finalize_chunks(chunks, "")
+        assert all(c["flow_warnings"] == [] for c in out)
+
+    def test_post_compromise_interleaving_does_not_warn(self):
+        """Download then persist, beacon then collect: the kill chain is not
+        a strict order past initial access, and warning here drowned the one
+        inversion that matters on the first live run."""
+        chunks = [
+            self._chunk("lure", 1, [], ["initial-access"]),
+            self._chunk("c2", 2, [1], ["command-and-control"]),
+            self._chunk("persist", 3, [2], ["persistence"]),
+            self._chunk("collect", 4, [3], ["collection"]),
+        ]
+        out = _finalize_chunks(chunks, "")
+        assert all(c["flow_warnings"] == [] for c in out)
+
+    def test_same_tactic_does_not_warn(self):
+        chunks = [
+            self._chunk("a", 1, [], ["execution"]),
+            self._chunk("b", 2, [1], ["execution"]),
+        ]
+        out = _finalize_chunks(chunks, "")
+        assert all(c["flow_warnings"] == [] for c in out)
+
+    def test_unknown_or_missing_tactic_is_skipped(self):
+        chunks = [
+            self._chunk("a", 1, [], ["impact"]),
+            self._chunk("b", 2, [1], ["not-a-tactic"]),
+            {"chunk_id": "c", "sequence_index": 3, "predecessor_indices": [1],
+             "source_excerpt": "", "context": {}},
+        ]
+        out = _finalize_chunks(chunks, "")
+        assert all(c["flow_warnings"] == [] for c in out)
+
+    def test_non_sequential_source_still_warns_on_explicit_edges(self):
+        chunks = [
+            self._chunk("kit", 1, [], ["execution"]),
+            self._chunk("lure", 2, [1], ["initial-access"]),
+        ]
+        out = _finalize_chunks(chunks, "", is_sequential=False)
+        lure = next(c for c in out if c["chunk_id"] == "lure")
+        assert len(lure["flow_warnings"]) == 1
+
 
 class TestClassifySourceProvenance:
     """_classify_source_provenance buckets a chunk's source span into
@@ -4138,3 +4273,32 @@ class TestTrailingJunkIsRecovered:
             {"chunks": "[{not json at all"}, ChunkBehaviorsOutput,
         )
         assert out["chunks"] == "[{not json at all", "left for the retry path"
+
+
+class TestProcessEntitiesAttribution:
+    """_process_entities keeps the extractor's per-cluster `attributed_to` on
+    intrusion sets — the signal that replaced the every-cluster-to-every-
+    sponsor cross product in the serializer."""
+
+    def test_intrusion_set_keeps_cleaned_attributed_to(self):
+        from app.nodes.llm.entity_extraction import _process_entities
+        out = _process_entities([
+            {"value": "TA412", "entity_type": "intrusion_set", "confidence": 0.9,
+             "attributed_to": [" MSS ", "", "HSSD", 3]},
+        ])
+        assert out[0]["attributed_to"] == ["MSS", "HSSD"]
+
+    def test_intrusion_set_without_the_field_gets_an_empty_list(self):
+        from app.nodes.llm.entity_extraction import _process_entities
+        out = _process_entities([
+            {"value": "UNK_LateNight", "entity_type": "intrusion_set", "confidence": 0.8},
+        ])
+        assert out[0]["attributed_to"] == []
+
+    def test_other_types_do_not_carry_it(self):
+        from app.nodes.llm.entity_extraction import _process_entities
+        out = _process_entities([
+            {"value": "MSS", "entity_type": "threat_actor", "confidence": 0.9,
+             "attributed_to": ["TA412"]},
+        ])
+        assert "attributed_to" not in out[0]

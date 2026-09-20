@@ -449,6 +449,42 @@ class DetectionRule:
     source_location: dict = field(default_factory=dict)
 
 
+# ATT&CK tactic shortnames in kill-chain order. The chunker's prompt walks
+# this order in prose; this is the same order as data, so the tactic-order
+# backstop in _finalize_chunks can say "this edge runs backwards through the
+# kill chain" deterministically. Unknown or missing tactics rank None and are
+# never warned about.
+TACTIC_ORDER: tuple[str, ...] = (
+    "reconnaissance",
+    "resource-development",
+    "initial-access",
+    "execution",
+    "persistence",
+    "privilege-escalation",
+    "defense-evasion",
+    "credential-access",
+    "discovery",
+    "lateral-movement",
+    "collection",
+    "command-and-control",
+    "exfiltration",
+    "impact",
+)
+_TACTIC_RANK: dict[str, int] = {t: i for i, t in enumerate(TACTIC_ORDER)}
+# Tactics that must precede everything else in a chain: nothing runs on a
+# victim before the adversary reaches it. An edge INTO one of these from a
+# later tactic is an inversion; post-compromise tactics interleave freely and
+# are not checked.
+PRE_COMPROMISE_MAX_RANK: int = _TACTIC_RANK["initial-access"]
+
+
+def tactic_rank(name: str | None) -> int | None:
+    """Kill-chain position of a tactic shortname, or None when unknown."""
+    if not isinstance(name, str):
+        return None
+    return _TACTIC_RANK.get(name.strip().lower())
+
+
 # Chunk fields the analyst may overwrite at the chunk-review gate. ONE
 # definition: the API's ChunkDecisionItem validator and gate_chunks's
 # _apply_chunk_edits both filter on it. They used to carry separate copies,
@@ -525,6 +561,11 @@ class Chunk:
     chain_root: bool = False
     chain_label: str = ""
     precedes_ids: list[str] = field(default_factory=list)  # Forward edges in chunk_id space
+    # Deterministic warnings about this chunk's incoming edges, written by
+    # _finalize_chunks: today only "a later tactic precedes an earlier one".
+    # Warn-only — the graph is never rewritten. Rendered as a chip on the
+    # chunk-review canvas and shown to the AI reviewer.
+    flow_warnings: list[str] = field(default_factory=list)
     # Per-chunk artifacts captured at chunk-time. Categories like
     # "registry_keys", "c2_domains", "c2_ips", "file_hashes", "file_paths",
     # "urls", "process_names", "mutexes". Values are VERBATIM substrings of the
@@ -945,6 +986,10 @@ class PipelineState(TypedDict, total=False):
     gate2_approved_rel_ids: list[str]  # IDs of approved relationships
     gate2_removed_rel_ids: list[str]  # IDs of relationships the analyst removed
     gate2_added_rels: list[dict]  # Relationships the analyst added manually
+    # Relationships the analyst edited at the bundle gate, as
+    # {rel_id, original, edited}: the serializer drops the original's key
+    # and emits the edited row. The preview itself is not mutated.
+    gate2_edited_rels: list[dict]
 
     # ── Stage 6: STIX serialization ───────────────────────────────────
     # Written by: serialize_stix

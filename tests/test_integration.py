@@ -1046,6 +1046,86 @@ class TestGateToDownstream:
             "exactly one edge should disappear"
         )
 
+    async def test_gate2_added_relationship_reaches_the_bundle(
+        self, sample_entities, sample_drafts,
+    ):
+        """A row the analyst adds at Gate 2 ships. Until this test existed
+        `gate2_added_rels` was read by the feedback synthesizer alone."""
+        base = {
+            "gates_enabled": True,
+            "metadata": {"author": "Test Author"},
+            "source_reliability": 85,
+            "validated_entities": copy.deepcopy(sample_entities),
+            "drafts": copy.deepcopy(sample_drafts),
+            "gate1_approved_draft_ids": [d["draft_id"] for d in sample_drafts],
+        }
+        state = _merge_state(base, normalize(base))
+        state = _merge_state(state, gate_2({
+            **state,
+            "gate2_reviews": [{
+                "rel_id": "added_abc", "action": "approve",
+                "edited_rel_type": "uses",
+                "edited_source": "LockBit 3.0", "edited_source_type": "intrusion-set",
+                "edited_target": "Cobalt Strike", "edited_target_type": "malware",
+            }],
+        }))
+        assert route_after_gate_2(state) == "serialize_stix"
+        with patch(
+            "app.nodes.deterministic.serialization.run_query",
+            new=AsyncMock(return_value=[]),
+        ):
+            bundle = (await serialize_stix(state))["stix_bundle"]
+        by_id = {o["id"]: o for o in bundle["objects"]}
+        edges = {
+            ((by_id.get(o["source_ref"], {}).get("name") or "").lower(),
+             o["relationship_type"],
+             (by_id.get(o["target_ref"], {}).get("name") or "").lower())
+            for o in bundle["objects"] if o.get("type") == "relationship"
+        }
+        assert ("lockbit 3.0", "uses", "cobalt strike") in edges
+
+    async def test_gate2_edited_relationship_swaps_its_endpoint(
+        self, sample_entities, sample_drafts,
+    ):
+        """An edit ships as the edited row and NOT the original. In-place
+        mutation of the preview used to leave the original in the bundle."""
+        base = {
+            "gates_enabled": True,
+            "metadata": {"author": "Test Author"},
+            "source_reliability": 85,
+            "validated_entities": copy.deepcopy(sample_entities),
+            "drafts": copy.deepcopy(sample_drafts),
+            "gate1_approved_draft_ids": [d["draft_id"] for d in sample_drafts],
+        }
+        state = _merge_state(base, normalize(base))
+        row = next(
+            r for r in state["relationship_preview"]
+            if r["relationship_type"] == "attributed-to"
+            and r["source_type"] == "campaign"
+        )
+        state = _merge_state(state, gate_2({
+            **state,
+            "gate2_reviews": [{
+                "rel_id": row["id"], "action": "edit",
+                "edited_rel_type": "uses",
+            }],
+        }))
+        with patch(
+            "app.nodes.deterministic.serialization.run_query",
+            new=AsyncMock(return_value=[]),
+        ):
+            bundle = (await serialize_stix(state))["stix_bundle"]
+        by_id = {o["id"]: o for o in bundle["objects"]}
+        edges = {
+            ((by_id.get(o["source_ref"], {}).get("name") or "").lower(),
+             o["relationship_type"],
+             (by_id.get(o["target_ref"], {}).get("name") or "").lower())
+            for o in bundle["objects"] if o.get("type") == "relationship"
+        }
+        src, tgt = row["source_name"].lower(), row["target_name"].lower()
+        assert (src, "attributed-to", tgt) not in edges, "the original edge must go"
+        assert (src, "uses", tgt) in edges, "the edited edge must ship"
+
     async def test_gate2_preview_ids_survive_renormalize(
         self, sample_entities, sample_drafts,
     ):

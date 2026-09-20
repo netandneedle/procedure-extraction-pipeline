@@ -1420,6 +1420,21 @@ class TestSchemaValidation:
         assert item.action == "approve"
         assert item.edited_value is None
 
+    def test_gate2_review_item_endpoint_types(self):
+        """Endpoint types are lowercase STIX type tokens; the serializer
+        resolves (name, type) with them and skips a row it cannot name."""
+        from pydantic import ValidationError
+        from app.schemas.api import Gate2ReviewItem
+        ok = Gate2ReviewItem(
+            rel_id="added_1", action="approve", edited_rel_type="uses",
+            edited_source="TA412", edited_target="Exploit Chrome via BlueMoon",
+            edited_source_type="intrusion-set", edited_target_type="x-procedure",
+        )
+        assert ok.edited_source_type == "intrusion-set"
+        with pytest.raises(ValidationError):
+            Gate2ReviewItem(rel_id="added_1", action="approve",
+                            edited_source_type="Intrusion Set")
+
     def test_gate2_rel_type_matches_the_bundle_spelling(self):
         """The serializer emits `has-observable`; the whitelist must agree.
 

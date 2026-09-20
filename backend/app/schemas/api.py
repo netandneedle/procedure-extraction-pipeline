@@ -510,6 +510,18 @@ class Gate2ReviewItem(BaseModel):
         max_length=512,
         description="Corrected target name (if action=edit)",
     )
+    # STIX types of the endpoints. Required in practice for an added row
+    # (the canvas knows both); an edit that omits them keeps the original
+    # row's types. Without a type, "Cobalt Strike" is ambiguous between the
+    # malware and the tool node the same name can carry.
+    edited_source_type: str | None = Field(
+        default=None, max_length=64, pattern=r"^[a-z0-9-]+$",
+        description="STIX type of the source endpoint (e.g. intrusion-set, x-procedure)",
+    )
+    edited_target_type: str | None = Field(
+        default=None, max_length=64, pattern=r"^[a-z0-9-]+$",
+        description="STIX type of the target endpoint (e.g. identity, tool)",
+    )
     rationale: str | None = Field(
         default=None,
         max_length=500,

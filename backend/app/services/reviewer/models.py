@@ -391,6 +391,11 @@ class ChunkRecommendation(_Recommendation):
     own estimate and a second opinion on it changes nothing downstream, and
     the branch/converge flags describe geometry that `edges` already
     expresses — offering both invites a payload where they disagree.
+    `chain_root` / `chain_label` ARE offered: they are not geometry, they are
+    the chunker's claim about which intrusion a chunk belongs to and where a
+    chain starts, and a shared segment mis-rooted as a chain (an exploit kit
+    made the sole entry point with the campaigns hanging off it) is exactly
+    the defect a reviewer can see and an edge alone cannot fix.
 
     There is deliberately no `split`. The gate has no split primitive; the
     documented workaround is drop-then-add, which for a reviewer means
@@ -421,6 +426,21 @@ class ChunkRecommendation(_Recommendation):
     edited_source_excerpt: str | None = Field(
         default=None,
         description="Corrected verbatim source excerpt, with action=edit.",
+    )
+    edited_chain_root: bool | None = Field(
+        default=None,
+        description=(
+            "With action=edit: whether this chunk BEGINS a chain (an entry "
+            "point such as a lure). False on a shared capability that "
+            "several chains enter."
+        ),
+    )
+    edited_chain_label: str | None = Field(
+        default=None,
+        description=(
+            "With action=edit: the chain this chunk belongs to — a campaign, "
+            "or the name of a shared capability."
+        ),
     )
 
 

@@ -277,10 +277,238 @@ class TestPreviewMatchesSerializer:
     The preview and the serializer build their edge lists independently, and
     they had drifted in both directions: the preview fanned malware/tools out
     to every procedure whose `*_used` list was empty (edges the serializer
-    would never emit), while six intrusion-set/campaign classes shipped with
-    no preview at all. Scope here is the tool/malware classes the fan-out
-    affected — the ones where an analyst decision is meaningful.
+    would never emit), then actors out to every procedure (128 rows where 14
+    shipped), and showed procedure-level `targets` rows the serializer never
+    emitted; six intrusion-set/campaign classes shipped with no preview at
+    all. The tool/malware tests below are the original scope; the
+    "reviewable set" tests pin EVERY reviewable class equal on both sides,
+    with the non-reviewable remainder listed explicitly so a new class
+    cannot slip in unreviewed.
     """
+
+    # Every (source_type, verb, target_type) the preview offers for review.
+    # A serializer edge in one of these classes must be previewed, and vice
+    # versa.
+    REVIEWABLE_CLASSES = {
+        ("intrusion-set", "uses", "x-procedure"),
+        ("x-procedure", "uses", "malware"),
+        ("x-procedure", "uses", "tool"),
+        ("x-procedure", "exploits", "vulnerability"),
+        ("x-procedure", "precedes", "x-procedure"),
+        ("campaign", "attributed-to", "intrusion-set"),
+        ("intrusion-set", "attributed-to", "threat-actor"),
+        ("intrusion-set", "targets", "identity"),
+        ("intrusion-set", "targets", "location"),
+        ("campaign", "targets", "location"),
+        ("intrusion-set", "targets", "software"),
+        ("campaign", "targets", "software"),
+        ("intrusion-set", "exploits", "vulnerability"),
+        ("campaign", "exploits", "vulnerability"),
+    }
+    # Everything else the serializer emits, by design not an analyst call:
+    # the technique mapping is inherent (reviewed at the technique gate),
+    # actor/campaign rollups are derived from the per-procedure edges, and
+    # SCO linkage does not exist until serialization.
+    EXCLUDED_CLASSES = {
+        ("x-procedure", "uses", "attack-pattern"),
+        ("intrusion-set", "uses", "tool"),
+        ("intrusion-set", "uses", "malware"),
+        ("intrusion-set", "uses", "attack-pattern"),
+        ("campaign", "uses", "tool"),
+        ("campaign", "uses", "malware"),
+        ("campaign", "uses", "attack-pattern"),
+    }
+    EXCLUDED_VERBS = {"component-of", "has-observable", "detects", "has-analytic", "uses-data-component"}
+
+    @staticmethod
+    def _rich_state(sample_entities, sample_drafts):
+        """Two intrusion sets, a threat actor, a victim org, a victim
+        location, a software asset; drafts with attribution, a CVE, and a
+        branch in the chunk DAG so a precedes edge is operator-routed."""
+        from app.graph.state import Entity, EntityType, GateAction
+
+        def ent(eid, etype, value, **extra):
+            d = asdict(Entity(entity_id=eid, entity_type=etype, value=value,
+                              confidence=0.9, gate_action=GateAction.APPROVE.value))
+            d.update(extra)
+            return d
+
+        entities = copy.deepcopy(sample_entities) + [
+            ent("ent-101", EntityType.INTRUSION_SET.value, "Contrast Group"),
+            ent("ent-102", EntityType.THREAT_ACTOR.value, "Ministry of State Security"),
+            ent("ent-103", EntityType.ORGANIZATION.value, "Acme Logistics", organization_role="victim"),
+            ent("ent-104", EntityType.ORGANIZATION.value, "Proofpoint", organization_role="author"),
+            ent("ent-105", EntityType.LOCATION.value, "Indonesia", location_role="victim"),
+            ent("ent-106", EntityType.LOCATION.value, "China", location_role="origin"),
+            ent("ent-107", EntityType.SOFTWARE.value, "Apache ActiveMQ"),
+        ]
+        drafts = copy.deepcopy(sample_drafts)
+        drafts[0]["attributed_actors"] = ["LockBit 3.0"]
+        drafts[0]["vulnerability_refs"] = ["ent-006"]
+        drafts[1]["attributed_actors"] = []          # two isets present -> no actor edge
+        drafts[1]["tools_used"] = ["certutil.exe"]
+        drafts[2]["attributed_actors"] = ["Contrast Group"]
+        drafts[2]["malware_used"] = ["Cobalt Strike"]
+        fourth = copy.deepcopy(drafts[2])
+        fourth.update({
+            "draft_id": "dft-004", "chunk_id": "chk-004",
+            "name": "Exfiltrate archive via rclone",
+            "sequence_index": 4, "predecessor_indices": [2],
+            "attributed_actors": ["LockBit 3.0"], "malware_used": [],
+        })
+        drafts.append(fourth)
+        chunks = [
+            {"chunk_id": "chk-001", "sequence_index": 1, "predecessor_indices": [], "precedes_ids": ["chk-002"]},
+            {"chunk_id": "chk-002", "sequence_index": 2, "predecessor_indices": [1], "precedes_ids": ["chk-003", "chk-004"]},
+            {"chunk_id": "chk-003", "sequence_index": 3, "predecessor_indices": [2], "precedes_ids": []},
+            {"chunk_id": "chk-004", "sequence_index": 4, "predecessor_indices": [2], "precedes_ids": []},
+        ]
+        return {
+            "gates_enabled": True,
+            "metadata": {},
+            "source_reliability": 85,
+            "is_sequential": True,
+            "validated_entities": entities,
+            "drafts": drafts,
+            "chunks": chunks,
+            "gate1_approved_draft_ids": [d["draft_id"] for d in drafts],
+        }
+
+    @staticmethod
+    def _reviewable_keys_from_preview(preview):
+        return {
+            (r["source_name"].lower(), r["relationship_type"], r["target_name"].lower(),
+             r["source_type"], r["target_type"])
+            for r in preview if r.get("reviewable")
+        }
+
+    @classmethod
+    def _shipped_keys_from_bundle(cls, bundle):
+        """Every SRO as a name-keyed 5-tuple, with `precedes` collapsed to the
+        logical procedure -> procedure edge across operator/condition hops."""
+        by_id = {o["id"]: o for o in bundle["objects"]}
+        rels = [o for o in bundle["objects"] if o.get("type") == "relationship"]
+        hops = {"attack-operator", "attack-condition"}
+        succ: dict[str, list[str]] = {}
+        for r in rels:
+            if r["relationship_type"] == "precedes":
+                succ.setdefault(r["source_ref"], []).append(r["target_ref"])
+        # A ref whose object is not in the bundle (ATT&CK objects are not
+        # embedded when the catalogue query is mocked) still has a type: the
+        # STIX id prefix.
+        def _type(ref):
+            return by_id.get(ref, {}).get("type") or ref.split("--")[0]
+
+        keys = set()
+        for r in rels:
+            src, tgt = by_id.get(r["source_ref"], {}), by_id.get(r["target_ref"], {})
+            verb = r["relationship_type"]
+            if verb == "precedes":
+                if src.get("type") != "x-procedure":
+                    continue  # hop-internal edge; expanded from its procedure source
+                stack, seen, ends = [r["target_ref"]], set(), []
+                while stack:
+                    n = stack.pop()
+                    if n in seen:
+                        continue
+                    seen.add(n)
+                    if by_id.get(n, {}).get("type") in hops:
+                        stack.extend(succ.get(n, []))
+                    else:
+                        ends.append(n)
+                for e in ends:
+                    keys.add(((src.get("name") or "").lower(), "precedes",
+                              (by_id[e].get("name") or "").lower(), "x-procedure", by_id[e]["type"]))
+                continue
+            keys.add(((src.get("name") or "").lower(), verb, (tgt.get("name") or "").lower(),
+                      _type(r["source_ref"]), _type(r["target_ref"])))
+        return keys
+
+    async def _preview_and_bundle(self, state):
+        state = {**state, **normalize(state)}
+        with patch(
+            "app.nodes.deterministic.serialization.run_query",
+            new=AsyncMock(return_value=[]),
+        ):
+            bundle = (await serialize_stix(state))["stix_bundle"]
+        return state, bundle
+
+    async def test_reviewable_preview_equals_shipped_bundle(
+        self, sample_entities, sample_drafts,
+    ):
+        """The analyst reviews exactly the reviewable edges that ship."""
+        state, bundle = await self._preview_and_bundle(
+            self._rich_state(sample_entities, sample_drafts),
+        )
+        previewed = self._reviewable_keys_from_preview(state["relationship_preview"])
+        shipped = self._shipped_keys_from_bundle(bundle)
+        shipped_reviewable = {
+            k for k in shipped if (k[3], k[1], k[4]) in self.REVIEWABLE_CLASSES
+        }
+        assert previewed - shipped_reviewable == set(), (
+            f"preview promises edges the serializer never emits: {sorted(previewed - shipped_reviewable)}"
+        )
+        assert shipped_reviewable - previewed == set(), (
+            f"serializer ships reviewable edges the analyst never saw: {sorted(shipped_reviewable - previewed)}"
+        )
+        # The fixture exercises the classes that drifted: per-draft actor
+        # edges (not a fan-out), actor-level targets, gated exploits.
+        assert ("lockbit 3.0", "uses", "exploit apache activemq via cve-2023-46604",
+                "intrusion-set", "x-procedure") in previewed
+        assert not any(k[0] == "contrast group" and k[1] == "uses"
+                       and k[2] == "exploit apache activemq via cve-2023-46604" for k in previewed)
+        assert ("lockbit 3.0", "targets", "acme logistics", "intrusion-set", "identity") in previewed
+        assert not any(k[1] == "targets" and k[3] == "x-procedure" for k in previewed)
+        assert not any(k[2] == "proofpoint" for k in previewed), "author orgs are not victims"
+        assert not any(k[2] == "china" for k in previewed), "origin locations are not targets"
+        assert ("lockbit 3.0", "exploits", "cve-2023-46604", "intrusion-set", "vulnerability") in previewed
+
+    async def test_every_shipped_class_is_reviewable_or_declared_excluded(
+        self, sample_entities, sample_drafts,
+    ):
+        """A new relationship class must be previewed or added to the
+        exclusion list on purpose — never shipped unreviewed by accident."""
+        _, bundle = await self._preview_and_bundle(
+            self._rich_state(sample_entities, sample_drafts),
+        )
+        classes = {(k[3], k[1], k[4]) for k in self._shipped_keys_from_bundle(bundle)}
+        unexpected = {
+            c for c in classes
+            if c not in self.REVIEWABLE_CLASSES
+            and c not in self.EXCLUDED_CLASSES
+            and c[1] not in self.EXCLUDED_VERBS
+        }
+        assert unexpected == set(), f"unreviewed relationship classes: {sorted(unexpected)}"
+
+    async def test_removed_operator_routed_precedes_leaves_the_bundle(
+        self, sample_entities, sample_drafts,
+    ):
+        """chk-002 branches to chk-003 and chk-004, so both edges ship through
+        an OR operator. Removing the preview row for one of them must remove
+        that logical edge, keep its sibling, and — with one output left — drop
+        the operator itself."""
+        state = self._rich_state(sample_entities, sample_drafts)
+        state = {**state, **normalize(state)}
+        assert state["chunk_operators"], "fixture must produce a branch operator"
+        row = next(
+            r for r in state["relationship_preview"]
+            if r["relationship_type"] == "precedes"
+            and r["source_name"] == "Download web shell via certutil"
+            and r["target_name"] == "Exfiltrate archive via rclone"
+        )
+        state["gate2_removed_rel_ids"] = [row["id"]]
+        with patch(
+            "app.nodes.deterministic.serialization.run_query",
+            new=AsyncMock(return_value=[]),
+        ):
+            bundle = (await serialize_stix(state))["stix_bundle"]
+        shipped = self._shipped_keys_from_bundle(bundle)
+        precedes = {(k[0], k[2]) for k in shipped if k[1] == "precedes"}
+        assert ("download web shell via certutil", "exfiltrate archive via rclone") not in precedes
+        assert ("download web shell via certutil", "execute cobalt strike beacon via powershell") in precedes
+        assert not [o for o in bundle["objects"] if o.get("type") == "attack-operator"], (
+            "a branch with one surviving arm is no branch; the operator must go"
+        )
 
     @staticmethod
     def _state(sample_entities, sample_drafts):

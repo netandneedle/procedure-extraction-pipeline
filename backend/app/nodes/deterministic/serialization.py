@@ -60,6 +60,11 @@ from app.graph.state import (
     resolve_display_title,
 )
 from app.nodes.deterministic.attack_conditions import build_attack_condition_sdos
+from app.nodes.deterministic.attribution import (
+    actors_for_procedure,
+    has_maas_only as _has_maas_only,
+    threat_actors_for_intrusion_set,
+)
 from app.nodes.deterministic.attack_operators import (
     build_attack_operator_sdos,
     route_precedes_through_operators,
@@ -479,6 +484,19 @@ async def serialize_stix(state: PipelineState) -> dict:
         if chunk_id and proc_stix_id:
             chunk_to_proc_stix_id[chunk_id] = proc_stix_id
 
+    # Analyst removals from the bundle gate. A removed `precedes` row names
+    # a logical procedure → procedure edge, but the bundle routes those
+    # through attack-operator SDOs whose effect_refs are built HERE, before
+    # the relationships — so the removal has to reach the chunk DAG and the
+    # operators' output lists now, not the SRO filter later (which cannot
+    # name an operator hop and keeps it). Other removals still apply at the
+    # SRO filter in _build_relationships.
+    removed_rel_keys = _analyst_removed_rel_keys(state)
+    flow_chunks, chunk_operators = _prune_removed_precedes(
+        state.get("chunks", []) or [], chunk_operators, removed_rel_keys,
+        normalized_drafts, draft_lookup,
+    )
+
     operator_sdos, op_id_to_stix_id = build_attack_operator_sdos(
         chunk_operators,
         chunk_to_proc_stix_id,
@@ -517,15 +535,23 @@ async def serialize_stix(state: PipelineState) -> dict:
         normalized_drafts, draft_lookup, validated_entities,
         id_registry, source_identity["id"],
         is_sequential=is_sequential,
-        chunks=state.get("chunks", []) or [],
+        chunks=flow_chunks,
         chunk_operators=chunk_operators,
         op_id_to_stix_id=op_id_to_stix_id,
         chunk_to_proc_stix_id=chunk_to_proc_stix_id,
         chunk_conditions=chunk_conditions,
         cond_anchor_to_stix_id=cond_anchor_to_stix_id,
-        removed_rel_keys=_analyst_removed_rel_keys(state),
+        removed_rel_keys=removed_rel_keys,
     )
     objects.extend(relationships)
+
+    # 5b. Rows the analyst added or edited at the bundle gate.
+    _, name_to_id = _build_name_index(
+        validated_entities, normalized_drafts, draft_lookup, id_registry,
+    )
+    objects.extend(_analyst_added_rels(
+        state, name_to_id, relationships, source_identity["id"],
+    ))
 
     # 6. Create Report SDO last so its object_refs cover every other
     # object assembled above (SDOs, SCOs, and SROs). This ties orphan
@@ -1770,17 +1796,81 @@ def _actors_for_procedure(
          signal, guessing is what created the bug; the contrast actors stay
          in the bundle as context SDOs with no fabricated edges.
     """
-    named = _resolve_entity_names(
-        original_draft.get("attributed_actors", []) or [],
-        intrusion_sets,
-        id_registry,
+    # The rule itself lives in attribution.py so the bundle-gate preview
+    # applies the identical one; this only maps the chosen entities to ids.
+    resolved: list[str] = []
+    for iset in actors_for_procedure(original_draft, intrusion_sets):
+        stix_id = id_registry.get(iset.get("entity_id", ""))
+        if stix_id and stix_id not in resolved:
+            resolved.append(stix_id)
+    return resolved
+
+
+def _prune_removed_precedes(
+    chunks: list[dict],
+    chunk_operators: dict[str, dict],
+    removed_rel_keys: set[tuple[str, str, str, str, str]],
+    normalized_drafts: list[dict],
+    draft_lookup: dict[str, dict],
+) -> tuple[list[dict], dict[str, dict]]:
+    """Apply Gate 2 `precedes` removals to the chunk DAG and the operators.
+
+    The preview keys a precedes row by procedure names; the DAG is keyed by
+    chunk ids. Procedure name → draft → chunk_id is the inverse of the map
+    the operator SDO builder uses. Returns copies; the caller's state is
+    untouched. Only branch operators lose an output — a converge's output
+    is its own anchor and its inputs are expressed by the routed edges,
+    which the pruned `precedes_ids` no longer produce.
+    """
+    removed_precedes = {
+        (src, tgt) for src, verb, tgt, st, tt in removed_rel_keys
+        if verb == "precedes" and st == "x-procedure" and tt == "x-procedure"
+    }
+    if not removed_precedes:
+        return chunks, chunk_operators
+
+    name_to_chunk: dict[str, str] = {}
+    for ndraft in normalized_drafts:
+        draft_id = ndraft.get("draft_id", "")
+        original = draft_lookup.get(draft_id, {})
+        name = (original.get("name") or draft_id or "").strip().lower()
+        chunk_id = original.get("chunk_id", "")
+        if name and chunk_id:
+            name_to_chunk[name] = chunk_id
+    pairs = {
+        (name_to_chunk.get(src), name_to_chunk.get(tgt))
+        for src, tgt in removed_precedes
+    }
+    pairs = {p for p in pairs if p[0] and p[1]}
+    if not pairs:
+        return chunks, chunk_operators
+
+    pruned_chunks = [
+        {
+            **c,
+            "precedes_ids": [
+                t for t in (c.get("precedes_ids") or [])
+                if (c.get("chunk_id"), t) not in pairs
+            ],
+        }
+        for c in chunks
+    ]
+    pruned_ops: dict[str, dict] = {}
+    for op_id, meta in chunk_operators.items():
+        m = dict(meta)
+        if m.get("role") == "branch":
+            anchor = m.get("anchor_chunk_id")
+            m["output_chunk_ids"] = [
+                t for t in (m.get("output_chunk_ids") or [])
+                if (anchor, t) not in pairs
+            ]
+        pruned_ops[op_id] = m
+    logger.info(
+        "serialize_stix: %d analyst-removed precedes edge(s) pruned from the "
+        "chunk DAG before routing",
+        len(pairs),
     )
-    if named:
-        return named
-    if len(intrusion_sets) == 1:
-        single = id_registry.get(intrusion_sets[0].get("entity_id", ""))
-        return [single] if single else []
-    return []
+    return pruned_chunks, pruned_ops
 
 
 def _analyst_removed_rel_keys(
@@ -1791,9 +1881,12 @@ def _analyst_removed_rel_keys(
     `gate2_removed_rel_ids` holds `relationship_preview` ids; the preview
     entries carry the names and types the key is built from. Doing the
     translation here keeps `_build_relationships` free of gate vocabulary.
+    An edited row counts as a removal of its ORIGINAL — the edited row is
+    emitted by `_analyst_added_rels`.
     """
     removed_ids = set(state.get("gate2_removed_rel_ids") or [])
-    if not removed_ids:
+    edited = [e for e in (state.get("gate2_edited_rels") or []) if isinstance(e, dict)]
+    if not removed_ids and not edited:
         return set()
     preview = state.get("relationship_preview") or []
     keys = {
@@ -1801,11 +1894,127 @@ def _analyst_removed_rel_keys(
         for rel in preview
         if rel.get("id") in removed_ids
     }
+    for e in edited:
+        original = e.get("original")
+        if isinstance(original, dict):
+            keys.add(preview_relationship_key(original))
     logger.info(
-        "serialize_stix: %d analyst removals resolved to %d relationship keys",
-        len(removed_ids), len(keys),
+        "serialize_stix: %d analyst removals + %d edits resolved to %d relationship keys",
+        len(removed_ids), len(edited), len(keys),
     )
     return keys
+
+
+def _build_name_index(
+    entities: list[dict],
+    normalized_drafts: list[dict],
+    draft_lookup: dict[str, dict],
+    id_registry: dict[str, str],
+) -> tuple[dict[str, tuple[str, str]], dict[tuple[str, str], str]]:
+    """Both directions between STIX ids and (name, stix_type).
+
+    The preview and the analyst speak in names; SROs carry UUIDs. Built
+    from the same entities, drafts and techniques the SROs were built from,
+    so a removal keyed by name finds its SRO and an added row keyed by name
+    finds its endpoints. Names are lowercased in the name->id direction.
+    """
+    by_id: dict[str, tuple[str, str]] = {}
+    for entity in entities:
+        stix_id = id_registry.get(entity.get("entity_id", ""))
+        if not stix_id:
+            continue
+        effective_type = entity.get("edited_type") or entity.get("entity_type", "")
+        stix_type = _ENTITY_TO_STIX_TYPE.get(effective_type, "")
+        name = entity.get("edited_value") or entity.get("value", "")
+        by_id[stix_id] = (name, stix_type)
+    for ndraft in normalized_drafts:
+        draft_id = ndraft.get("draft_id", "")
+        stix_id = id_registry.get(draft_id)
+        if not stix_id:
+            continue
+        original = draft_lookup.get(draft_id, {})
+        by_id[stix_id] = (original.get("name", draft_id), "x-procedure")
+        # attack-pattern ids come off the draft's techniques, which is the
+        # same place the preview read their display names from.
+        for tech in original.get("techniques", []) or []:
+            tech_stix = tech.get("stix_id")
+            if tech_stix:
+                by_id[tech_stix] = (
+                    tech.get("technique_name", tech.get("technique_id", "")),
+                    "attack-pattern",
+                )
+    by_name: dict[tuple[str, str], str] = {}
+    for stix_id, (name, stix_type) in by_id.items():
+        by_name.setdefault(((name or "").strip().lower(), stix_type), stix_id)
+    return by_id, by_name
+
+
+def _analyst_added_rels(
+    state: PipelineState,
+    by_name: dict[tuple[str, str], str],
+    existing: list[dict],
+    source_identity_id: str,
+) -> list[dict]:
+    """SROs for the rows the analyst added or edited at the bundle gate.
+
+    Until this existed, `gate2_added_rels` was read by the feedback
+    synthesizer alone and an edit mutated a preview the serializer never
+    consulted — both were recorded and silently dropped. Endpoints resolve by
+    (name, type); a row missing its type resolves by name alone only when
+    that name is unambiguous. Anything unresolvable is logged and skipped:
+    fabricating an endpoint would be worse than a lost edit the analyst can
+    see. A row duplicating an SRO already built is skipped too.
+    """
+    rows = [r for r in (state.get("gate2_added_rels") or []) if isinstance(r, dict)]
+    rows += [
+        e["edited"] for e in (state.get("gate2_edited_rels") or [])
+        if isinstance(e, dict) and isinstance(e.get("edited"), dict)
+    ]
+    if not rows:
+        return []
+
+    by_name_only: dict[str, list[str]] = {}
+    for (name, _stix_type), stix_id in by_name.items():
+        by_name_only.setdefault(name, []).append(stix_id)
+
+    def _resolve(name: object, stix_type: object) -> str | None:
+        key_name = (str(name) if name is not None else "").strip().lower()
+        key_type = (str(stix_type) if stix_type is not None else "").strip().lower()
+        if not key_name:
+            return None
+        if key_type:
+            return by_name.get((key_name, key_type))
+        candidates = by_name_only.get(key_name) or []
+        return candidates[0] if len(candidates) == 1 else None
+
+    present = {
+        (r.get("source_ref"), r.get("relationship_type"), r.get("target_ref"))
+        for r in existing
+    }
+    out: list[dict] = []
+    skipped = 0
+    for row in rows:
+        verb = (row.get("relationship_type") or "").strip().lower()
+        src = _resolve(row.get("source_name"), row.get("source_type"))
+        tgt = _resolve(row.get("target_name"), row.get("target_type"))
+        if not verb or not src or not tgt or src == tgt:
+            skipped += 1
+            logger.warning(
+                "serialize_stix: analyst relationship %r -[%s]-> %r not resolvable "
+                "to bundle objects (types %r / %r); skipped",
+                row.get("source_name"), verb, row.get("target_name"),
+                row.get("source_type"), row.get("target_type"),
+            )
+            continue
+        if (src, verb, tgt) in present:
+            continue
+        present.add((src, verb, tgt))
+        out.append(_make_sro(src, verb, tgt, source_identity_id))
+    logger.info(
+        "serialize_stix: %d analyst-added/edited relationship(s) emitted, %d skipped",
+        len(out), skipped,
+    )
+    return out
 
 
 def _build_relationships(
@@ -1996,10 +2205,7 @@ def _build_relationships(
     # with no explicitly attributed intrusion set. MaaS malware is
     # operated by many unrelated actors, so creating attributed-to SROs
     # from campaigns to intrusion sets would produce false attribution.
-    has_maas_only = (
-        all(mw.get("is_maas", False) for mw in malware)
-        and len(malware) > 0
-    )
+    has_maas_only = _has_maas_only(malware)
 
     # Campaign ATTRIBUTED_TO intrusion set
     # Guarded: skip if only MaaS malware present and the intrusion set
@@ -2027,12 +2233,14 @@ def _build_relationships(
                 source_identity_id,
             ))
 
-    # Intrusion set ATTRIBUTED_TO threat actor (cluster -> real-world actor)
+    # Intrusion set ATTRIBUTED_TO threat actor (cluster -> real-world actor),
+    # per cluster from the extractor's `attributed_to` — no longer every
+    # cluster to every sponsor (see attribution.threat_actors_for_intrusion_set).
     for iset in intrusion_sets:
         iset_stix_id = id_registry.get(iset.get("entity_id", ""))
         if not iset_stix_id:
             continue
-        for ta in threat_actors:
+        for ta in threat_actors_for_intrusion_set(iset, intrusion_sets, threat_actors):
             ta_stix_id = id_registry.get(ta.get("entity_id", ""))
             if ta_stix_id:
                 rels.append(_make_sro(
@@ -2249,35 +2457,9 @@ def _drop_analyst_removed(
     wrong edge would be worse than one that failed to apply, and the analyst
     can see what shipped.
     """
-    name_index: dict[str, tuple[str, str]] = {}
-
-    for entity in entities:
-        stix_id = id_registry.get(entity.get("entity_id", ""))
-        if not stix_id:
-            continue
-        effective_type = entity.get("edited_type") or entity.get("entity_type", "")
-        stix_type = _ENTITY_TO_STIX_TYPE.get(effective_type, "")
-        name = entity.get("edited_value") or entity.get("value", "")
-        name_index[stix_id] = (name, stix_type)
-
-    for ndraft in normalized_drafts:
-        draft_id = ndraft.get("draft_id", "")
-        stix_id = id_registry.get(draft_id)
-        if not stix_id:
-            continue
-        original = draft_lookup.get(draft_id, {})
-        name_index[stix_id] = (
-            original.get("name", draft_id), "x-procedure",
-        )
-        # attack-pattern ids come off the draft's techniques, which is the
-        # same place the preview read their display names from.
-        for tech in original.get("techniques", []) or []:
-            tech_stix = tech.get("stix_id")
-            if tech_stix:
-                name_index[tech_stix] = (
-                    tech.get("technique_name", tech.get("technique_id", "")),
-                    "attack-pattern",
-                )
+    name_index, _ = _build_name_index(
+        entities, normalized_drafts, draft_lookup, id_registry,
+    )
 
     kept: list[dict] = []
     dropped = 0

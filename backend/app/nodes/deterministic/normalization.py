@@ -32,6 +32,11 @@ from dataclasses import asdict
 
 from app.nodes.deterministic.attack_conditions import extract_conditions
 from app.nodes.deterministic.attack_operators import infer_operators
+from app.nodes.deterministic.attribution import (
+    actors_for_procedure,
+    has_maas_only as _has_maas_only,
+    threat_actors_for_intrusion_set,
+)
 from app.nodes.deterministic.relationship_keys import (
     preview_relationship_id,
 )
@@ -433,26 +438,37 @@ def _derive_relationship_preview(
         target_type: str      - STIX type
         reviewable: bool      - True if analyst should review; False for auto-derived
 
+    The preview must show exactly the reviewable edges the serializer will
+    ship, derived by the SAME rules (see app.nodes.deterministic.attribution
+    for the shared ones). It drifted twice: tool/malware fan-out, then
+    actor fan-out — every intrusion set × every procedure, 128 rows on an
+    eight-actor report where the serializer shipped 14. A contract test
+    (tests/test_normalize.py::TestPreviewMatchesSerializer) now pins the
+    reviewable set equal on both sides.
+
     Directionality matches serialization output:
         uses:           x-procedure → attack-pattern | tool | malware
-        uses:           intrusion-set → x-procedure
+        uses:           intrusion-set → x-procedure   (per-draft attributed_actors)
         exploits:       x-procedure → vulnerability
-        targets:        x-procedure → identity
+        exploits:       intrusion-set | campaign → vulnerability (gated on procedure evidence)
         attributed-to:  campaign → intrusion-set | intrusion-set → threat-actor
+        targets:        intrusion-set → identity (victim orgs)
+        targets:        intrusion-set | campaign → location (victim) | software
         precedes:       x-procedure → x-procedure
 
     Categorization (PDM whitepaper §8.4):
         Inherent (reviewable=False):
             - uses: x-procedure → attack-pattern (technique mapping from Gate 1)
-        Reviewable (reviewable=True):
-            - uses (tool/malware/IS linkage)
-            - exploits, attributed-to, targets, precedes
+        Reviewable (reviewable=True): everything else above.
 
-    Coverage vs. serialization._build_relationships:
-        Included: uses, exploits, attributed-to, targets, precedes
-        Excluded: component-of (SCO refs don't exist until serialization
-                  builds them from raw command lines and IOC entities;
-                  these are auto-derived and don't need analyst review)
+    Deliberately NOT previewed (derived or structural, not analyst calls):
+        - intrusion-set | campaign → uses → tool | malware | attack-pattern
+          (rollups of the per-procedure edges)
+        - component-of / has-observable (SCOs don't exist until serialization)
+        - the detection chain (ATT&CK's own objects)
+        - operator/condition hops of precedes (the preview shows the logical
+          procedure → procedure edge; the serializer routes it through
+          attack-operator / attack-condition SDOs)
     """
     rels: list[dict] = []
     _removed = GateAction.REMOVE.value
@@ -465,6 +481,14 @@ def _derive_relationship_preview(
 
     def _entity_name(entity: dict) -> str:
         return entity.get("edited_value") or entity.get("value", "")
+
+    def _vuln_name(vref: str, vulnerabilities: list[dict]) -> str:
+        """Mirror the serializer: a vref names an entity_id or a value;
+        unresolved refs ship as-is, so the preview shows the raw ref too."""
+        for v in vulnerabilities:
+            if v.get("entity_id") == vref or v.get("value") == vref:
+                return _entity_name(v)
+        return vref
 
     # Index entities by type, excluding removed
     def _by_type(etype: str) -> list[dict]:
@@ -485,6 +509,13 @@ def _derive_relationship_preview(
         and e.get("gate_action") != _removed
     ]
     vulnerabilities = _by_type(EntityType.VULNERABILITY.value)
+    victim_locations = [
+        e for e in validated_entities
+        if e.get("entity_type") == EntityType.LOCATION.value
+        and e.get("location_role") == "victim"
+        and e.get("gate_action") != _removed
+    ]
+    software_assets = _by_type(EntityType.SOFTWARE.value)
 
     # Build sequence_index -> draft name for PRECEDES
     seq_to_draft: dict[int, dict] = {}
@@ -530,8 +561,10 @@ def _derive_relationship_preview(
             })
 
         # intrusion-set USES x-procedure — REVIEWABLE (attribution claim)
-        # Bundle ref: uses, intrusion-set → x-procedure
-        for iset in intrusion_sets:
+        # Bundle ref: uses, intrusion-set → x-procedure. Per-draft, by the
+        # same rule the serializer applies (attributed_actors, else the
+        # single intrusion set, else none) — never a fan-out.
+        for iset in actors_for_procedure(draft, intrusion_sets):
             iset_name = _entity_name(iset)
             rels.append({
                 "id": _next_id(),
@@ -615,11 +648,8 @@ def _derive_relationship_preview(
                     "reviewable": True,
                 })
 
-    # MaaS attribution guard: same logic as serialization.py
-    has_maas_only = (
-        len(malware_list) > 0
-        and all(mw.get("is_maas", False) for mw in malware_list)
-    )
+    # MaaS attribution guard: the serializer's, shared.
+    has_maas_only = _has_maas_only(malware_list)
 
     # campaign ATTRIBUTED-TO intrusion-set — REVIEWABLE (attribution judgment)
     # Bundle ref: attributed-to, campaign → intrusion-set
@@ -639,9 +669,10 @@ def _derive_relationship_preview(
                 "reviewable": True,
             })
 
-    # intrusion-set ATTRIBUTED-TO threat-actor — REVIEWABLE (attribution judgment)
+    # intrusion-set ATTRIBUTED-TO threat-actor — REVIEWABLE (attribution judgment),
+    # per cluster by the serializer's rule.
     for iset in intrusion_sets:
-        for ta in threat_actors:
+        for ta in threat_actors_for_intrusion_set(iset, intrusion_sets, threat_actors):
             iset_name = _entity_name(iset)
             ta_name = _entity_name(ta)
             rels.append({
@@ -654,19 +685,71 @@ def _derive_relationship_preview(
                 "reviewable": True,
             })
 
-    # x-procedure TARGETS victim organization — REVIEWABLE (victimology judgment)
-    # Bundle ref: targets, x-procedure → identity
-    for draft in approved_drafts:
-        proc_name = draft.get("name", draft.get("draft_id", ""))
+    # Victimology — REVIEWABLE. Actor-level, exactly as the serializer emits
+    # them: the procedure-level `x-procedure targets identity` this used to
+    # show never had a serializer counterpart.
+    # Bundle ref: targets, intrusion-set → identity (victim orgs only)
+    for iset in intrusion_sets:
         for victim in victim_orgs:
-            victim_name = _entity_name(victim)
             rels.append({
                 "id": _next_id(),
                 "relationship_type": "targets",
-                "source_name": proc_name,
-                "target_name": victim_name,
-                "source_type": "x-procedure",
+                "source_name": _entity_name(iset),
+                "target_name": _entity_name(victim),
+                "source_type": "intrusion-set",
                 "target_type": "identity",
+                "reviewable": True,
+            })
+    # Bundle ref: targets, intrusion-set | campaign → location (victim role only)
+    for loc in victim_locations:
+        for actor, actor_type in (
+            *((i, "intrusion-set") for i in intrusion_sets),
+            *((c, "campaign") for c in campaigns),
+        ):
+            rels.append({
+                "id": _next_id(),
+                "relationship_type": "targets",
+                "source_name": _entity_name(actor),
+                "target_name": _entity_name(loc),
+                "source_type": actor_type,
+                "target_type": "location",
+                "reviewable": True,
+            })
+    # Bundle ref: targets, intrusion-set | campaign → software (every software asset)
+    for sw in software_assets:
+        for actor, actor_type in (
+            *((i, "intrusion-set") for i in intrusion_sets),
+            *((c, "campaign") for c in campaigns),
+        ):
+            rels.append({
+                "id": _next_id(),
+                "relationship_type": "targets",
+                "source_name": _entity_name(actor),
+                "target_name": _entity_name(sw),
+                "source_type": actor_type,
+                "target_type": "software",
+                "reviewable": True,
+            })
+    # Bundle ref: exploits, intrusion-set | campaign → vulnerability, gated on
+    # at least one procedure carrying the CVE in vulnerability_refs.
+    exploited: list[str] = []
+    for draft in approved_drafts:
+        for vref in draft.get("vulnerability_refs", []) or []:
+            name = _vuln_name(vref, vulnerabilities)
+            if name and name not in exploited:
+                exploited.append(name)
+    for vuln_name in exploited:
+        for actor, actor_type in (
+            *((i, "intrusion-set") for i in intrusion_sets),
+            *((c, "campaign") for c in campaigns),
+        ):
+            rels.append({
+                "id": _next_id(),
+                "relationship_type": "exploits",
+                "source_name": _entity_name(actor),
+                "target_name": vuln_name,
+                "source_type": actor_type,
+                "target_type": "vulnerability",
                 "reviewable": True,
             })
 

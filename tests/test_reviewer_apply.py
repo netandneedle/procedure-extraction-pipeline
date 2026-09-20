@@ -131,6 +131,18 @@ class TestReviewerOnlyFieldsAreStripped:
 # ── The chunk gate's shape transforms ───────────────────────────────────
 
 class TestChunkShapes:
+    def test_chain_edits_are_nested_under_edits(self):
+        """edited_chain_root / edited_chain_label ride into the gate's
+        whitelisted `edits`; a False root is a real edit, not an absence."""
+        out = apply_chunks({
+            "chunks": [_rec(
+                chunk_id="chk-kit", action="edit",
+                edited_chain_root=False, edited_chain_label="BlueMoon exploit kit — shared",
+            )],
+        }, {})
+        edits = out.channels["chunk_reviews"]["decisions"][0]["edits"]
+        assert edits == {"chain_root": False, "chain_label": "BlueMoon exploit kit — shared"}
+
     def test_flat_edits_are_nested_under_edits(self):
         out = apply_chunks({
             "chunks": [_rec(

@@ -605,6 +605,11 @@ function buildSubmitBody({ items, removedRelIds, editedRels, addedRels }) {
       edited_rel_type: a.relationship_type,
       edited_source: a.source_name,
       edited_target: a.target_name,
+      // The serializer resolves endpoints by (name, type); without the
+      // type, a name shared by a malware and a tool node is ambiguous and
+      // the row is skipped rather than guessed.
+      edited_source_type: a.source_type,
+      edited_target_type: a.target_type,
     });
   }
   return { reviews };

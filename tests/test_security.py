@@ -160,6 +160,93 @@ def sample_draft():
 
 
 # =============================================================================
+# 0. Per-cluster sponsor attribution
+# =============================================================================
+
+class TestPerActorSponsorAttribution:
+    """intrusion-set --attributed-to--> threat-actor follows the extractor's
+    per-cluster `attributed_to`, not a cross product.
+
+    On a four-actor report the cross product asserted MSS/HSSD sponsorship
+    for three clusters the report never tied to anyone — one of them
+    explicitly unattributed by the report.
+    """
+
+    @staticmethod
+    def _ent(eid, etype, value, **extra):
+        d = {"entity_id": eid, "entity_type": etype, "value": value,
+             "confidence": 0.9, "gate_action": "approve"}
+        d.update(extra)
+        return d
+
+    @staticmethod
+    def _attributions(rels, id_registry):
+        inv = {v: k for k, v in id_registry.items()}
+        return sorted(
+            (inv[r["source_ref"]], inv[r["target_ref"]]) for r in rels
+            if r["relationship_type"] == "attributed-to"
+            and r["source_ref"].startswith("intrusion-set--")
+        )
+
+    def test_only_the_named_cluster_is_attributed(self):
+        entities = [
+            self._ent("is-1", "intrusion_set", "TA412", attributed_to=["MSS", "HSSD"]),
+            self._ent("is-2", "intrusion_set", "UNK_DoubleCheck", attributed_to=[]),
+            self._ent("ta-1", "threat_actor", "MSS"),
+            self._ent("ta-2", "threat_actor", "HSSD"),
+        ]
+        reg = {"is-1": "intrusion-set--a", "is-2": "intrusion-set--b",
+               "ta-1": "threat-actor--m", "ta-2": "threat-actor--h"}
+        rels = _build_relationships(
+            normalized_drafts=[], draft_lookup={}, entities=entities,
+            id_registry=reg, source_identity_id="identity--src",
+        )
+        assert self._attributions(rels, reg) == [("is-1", "ta-1"), ("is-1", "ta-2")]
+
+    def test_name_match_is_case_insensitive_and_unknown_names_are_ignored(self):
+        entities = [
+            self._ent("is-1", "intrusion_set", "APT29", attributed_to=["svr", "Nobody"]),
+            self._ent("is-2", "intrusion_set", "APT28"),
+            self._ent("ta-1", "threat_actor", "SVR"),
+        ]
+        reg = {"is-1": "intrusion-set--a", "is-2": "intrusion-set--b", "ta-1": "threat-actor--s"}
+        rels = _build_relationships(
+            normalized_drafts=[], draft_lookup={}, entities=entities,
+            id_registry=reg, source_identity_id="identity--src",
+        )
+        assert self._attributions(rels, reg) == [("is-1", "ta-1")]
+
+    def test_single_cluster_single_sponsor_falls_back_to_the_pair(self):
+        """The single-actor report: 'the group' and its sponsor are the whole
+        story, and the model may well have returned an empty list."""
+        entities = [
+            self._ent("is-1", "intrusion_set", "APT29"),
+            self._ent("ta-1", "threat_actor", "SVR"),
+        ]
+        reg = {"is-1": "intrusion-set--a", "ta-1": "threat-actor--s"}
+        rels = _build_relationships(
+            normalized_drafts=[], draft_lookup={}, entities=entities,
+            id_registry=reg, source_identity_id="identity--src",
+        )
+        assert self._attributions(rels, reg) == [("is-1", "ta-1")]
+
+    def test_several_clusters_without_a_signal_get_nothing(self):
+        """No fabrication: with several clusters and no per-cluster claim,
+        guessing is what created the bug."""
+        entities = [
+            self._ent("is-1", "intrusion_set", "TA412"),
+            self._ent("is-2", "intrusion_set", "UNK_LateNight"),
+            self._ent("ta-1", "threat_actor", "MSS"),
+        ]
+        reg = {"is-1": "intrusion-set--a", "is-2": "intrusion-set--b", "ta-1": "threat-actor--m"}
+        rels = _build_relationships(
+            normalized_drafts=[], draft_lookup={}, entities=entities,
+            id_registry=reg, source_identity_id="identity--src",
+        )
+        assert self._attributions(rels, reg) == []
+
+
+# =============================================================================
 # 1. MaaS Attribution Guard
 # =============================================================================
 

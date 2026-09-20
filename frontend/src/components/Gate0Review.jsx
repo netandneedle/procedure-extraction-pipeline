@@ -192,6 +192,9 @@ export default function Gate0Review({
         // the chips could never render and the role-edit feature was dead.
         location_role: e.location_role ?? null,
         organization_role: e.organization_role ?? null,
+        // Per-cluster sponsorship from the extractor; read-only here. The
+        // serializer attributes an intrusion set only to these.
+        attributed_to: Array.isArray(e.attributed_to) ? e.attributed_to : [],
         isAdded: false,
       })),
       ...addedEntities,
@@ -619,6 +622,15 @@ export default function Gate0Review({
                   {(entity.type === "organization" || entity.entity_type === "organization") && entity.organization_role && (
                     <span className={`text-[10px] font-data px-1.5 py-0.5 rounded ${ROLE_CHIP_STYLES[entity.organization_role] ?? "bg-gb-bg1 text-gb-fg4"}`}>
                       role: {entity.organization_role}
+                    </span>
+                  )}
+                  {(entity.type === "intrusion_set" || entity.entity_type === "intrusion_set")
+                    && Array.isArray(entity.attributed_to) && entity.attributed_to.length > 0 && (
+                    <span
+                      className="text-[10px] font-data px-1.5 py-0.5 rounded bg-gb-bg1 text-gb-fg4"
+                      title="Threat actors the source explicitly attributes this cluster to. The bundle's attributed-to edges come from this list."
+                    >
+                      ↳ attributed to {entity.attributed_to.join(", ")}
                     </span>
                   )}
                 </div>

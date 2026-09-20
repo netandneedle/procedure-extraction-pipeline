@@ -188,6 +188,10 @@ def apply_chunks(payload: dict[str, Any], state: dict[str, Any]) -> AutoSubmissi
             edits["text"] = rec["edited_text"]
         if rec.get("edited_source_excerpt") is not None:
             edits["source_excerpt"] = rec["edited_source_excerpt"]
+        if isinstance(rec.get("edited_chain_root"), bool):
+            edits["chain_root"] = rec["edited_chain_root"]
+        if rec.get("edited_chain_label") is not None:
+            edits["chain_label"] = str(rec["edited_chain_label"])[:80]
         if edits:
             item["edits"] = edits
         decisions.append(item)

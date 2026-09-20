@@ -228,6 +228,19 @@ EXTRACT_ENTITIES_TOOL = {
                                 "nor attacker origin. Required for every location."
                             ),
                         },
+                        "attributed_to": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Only for entity_type=intrusion_set: the value(s) of "
+                                "the threat_actor entities the source EXPLICITLY "
+                                "attributes THIS cluster to — an indictment, 'operated "
+                                "by the MSS', 'a unit of the GRU'. Empty when the "
+                                "source does not say. Never infer sponsorship from "
+                                "country alignment ('China-aligned' is not 'MSS'), and "
+                                "never copy one cluster's attribution onto another."
+                            ),
+                        },
                     },
                     "required": ["value", "entity_type", "confidence"],
                 },
@@ -303,7 +316,7 @@ ENTITY TYPES AND GUIDANCE:
 
 SDO-producing types (become STIX Domain Objects):
 - intrusion_set: Activity clusters tracked by threat intel vendors. APT designations (APT29, APT41), vendor-specific clusters (UNC4899, SCATTERED SPIDER, Storm-0558, DEV-0537). CRITICAL: use EXACTLY the name the source uses. Never rename or merge across vendor nomenclatures. If the source says "UNC4899", extract "UNC4899", NOT "Lazarus Group". Different vendors cluster differently.
-- threat_actor: The real-world actor/organization BEHIND intrusion sets. State sponsors (SVR, GRU, MSS, IRGC), criminal organizations. NOT the intrusion set cluster name. Example: "APT29" = intrusion_set, "SVR" = threat_actor. These are linked via attributed-to relationships downstream.
+- threat_actor: The real-world actor/organization BEHIND intrusion sets. State sponsors (SVR, GRU, MSS, IRGC), criminal organizations. NOT the intrusion set cluster name. Example: "APT29" = intrusion_set, "SVR" = threat_actor. The link is per cluster and EXPLICIT: on the intrusion_set entity, list in `attributed_to` the threat_actor value(s) the source itself attributes that cluster to (an indictment, "operated by", "a unit of"). A report that attributes ONE of four clusters to the MSS attributes exactly one; the others get an empty list even if they are "China-aligned".
 - malware: Malware families, variants, backdoors, RATs, implants. Prefer the MITRE ATT&CK canonical name if one exists (check S#### entries), then Malpedia name, then source name. Not tools or utilities.
 - tool: Offensive tools (Cobalt Strike, Mimikatz), LOLBins (certutil, BITSAdmin), or dual-use utilities. Prefer ATT&CK canonical name, then Malpedia, then source name. Distinguish from malware: tools are commercially available or dual-use, malware is purpose-built.
 
@@ -832,6 +845,19 @@ def _process_entities(raw_entities: list[dict]) -> list[dict]:
                 entity_dict["location_role"] = loc_role
             else:
                 entity_dict["location_role"] = "context"
+
+        # Per-cluster sponsorship. The serializer used to attribute EVERY
+        # intrusion set to EVERY threat actor in the source; on a four-actor
+        # report that asserted state sponsorship for three clusters the
+        # report never tied to anyone. The list is empty unless the source
+        # says so, and the serializer emits no edge for an empty list when
+        # more than one cluster or sponsor is present.
+        if entity_type == EntityType.INTRUSION_SET.value:
+            raw_attr = raw.get("attributed_to") or []
+            entity_dict["attributed_to"] = [
+                a.strip() for a in raw_attr
+                if isinstance(a, str) and a.strip()
+            ] if isinstance(raw_attr, list) else []
 
         # Preserve context_snippet for provenance
         snippet = raw.get("context_snippet", "")

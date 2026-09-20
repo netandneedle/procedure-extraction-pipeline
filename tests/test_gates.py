@@ -1676,7 +1676,9 @@ class TestGate2:
                 {"rel_id": "added_xyz", "action": "approve",
                  "edited_rel_type": "targets",
                  "edited_source": "Procedure X",
-                 "edited_target": "Acme Corp"},
+                 "edited_target": "Acme Corp",
+                 "edited_source_type": "intrusion-set",
+                 "edited_target_type": "identity"},
             ],
             "relationship_preview": [],
         }
@@ -1686,6 +1688,43 @@ class TestGate2:
         assert added["relationship_type"] == "targets"
         assert added["source_name"] == "Procedure X"
         assert added["target_name"] == "Acme Corp"
+        # The endpoint types ride along: the serializer resolves (name, type)
+        # and a name alone is ambiguous between e.g. a malware and a tool.
+        assert added["source_type"] == "intrusion-set"
+        assert added["target_type"] == "identity"
+        assert result["gate2_edited_rels"] == []
+
+    def test_per_rel_edit_records_original_and_edited_without_mutating_preview(self):
+        """An edit is remove(original) + add(edited) for the serializer. The
+        preview row itself is untouched: mutating it in place re-keyed a row
+        the serializer never read, so the edit was recorded and dropped."""
+        preview = [
+            {"id": "rel-1", "relationship_type": "attributed-to",
+             "source_name": "UNK_DoubleCheck", "target_name": "MSS",
+             "source_type": "intrusion-set", "target_type": "threat-actor"},
+        ]
+        state = {
+            "gates_enabled": True,
+            "relationship_preview": preview,
+            "gate2_reviews": [
+                {"rel_id": "rel-1", "action": "edit", "edited_source": "TA412",
+                 "rationale": "the indictment names TA412, not UNK_DoubleCheck"},
+            ],
+        }
+        result = gate_2(state)
+        assert "relationship_preview" not in result
+        assert preview[0]["source_name"] == "UNK_DoubleCheck"
+        (edited,) = result["gate2_edited_rels"]
+        assert edited["rel_id"] == "rel-1"
+        assert edited["original"]["source_name"] == "UNK_DoubleCheck"
+        assert edited["edited"]["source_name"] == "TA412"
+        # Types default to the original row's when the edit carries none.
+        assert edited["edited"]["source_type"] == "intrusion-set"
+        assert edited["edited"]["target_type"] == "threat-actor"
+        assert edited["edited"]["rationale"].startswith("the indictment")
+        # Edited rows are still approved rows, not removals.
+        assert result["gate2_approved_rel_ids"] == ["rel-1"]
+        assert result["gate2_removed_rel_ids"] == []
 
 
 # =============================================================================

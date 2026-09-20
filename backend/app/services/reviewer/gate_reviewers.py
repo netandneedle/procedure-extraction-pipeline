@@ -249,6 +249,11 @@ def _fmt_entity(e: dict) -> str:
     for role_key in ("organization_role", "location_role"):
         if e.get(role_key):
             bits.append(f"{role_key}={e[role_key]}")
+    if e.get("entity_type") == "intrusion_set":
+        attributed = [a for a in (e.get("attributed_to") or []) if a]
+        bits.append(
+            "attributed_to=" + (", ".join(attributed) if attributed else "(none stated)")
+        )
     if e.get("denylisted"):
         bits.append(f"DENYLISTED ({e.get('denylist_reason', 'analyst denylist')})")
     line = "  ".join(bits)
@@ -406,6 +411,27 @@ REVIEW_CHUNKS_TOOL: dict[str, Any] = {
                                 "anchors the chunk back to its source."
                             ),
                         },
+                        "edited_chain_root": {
+                            "type": "boolean",
+                            "description": (
+                                "With action=edit: True when this chunk is an "
+                                "ENTRY point of a chain (a lure, an initial "
+                                "access). False when it is a shared capability "
+                                "that several chains enter — a kit made the "
+                                "sole entry point with the campaigns hanging "
+                                "off it is the defect this fixes, together with "
+                                "`edges` from each campaign's entry into it."
+                            ),
+                        },
+                        "edited_chain_label": {
+                            "type": "string",
+                            "description": (
+                                "With action=edit: the chain this chunk belongs "
+                                "to — a campaign's name, or the name of a shared "
+                                "capability. Tails behind a shared segment need "
+                                "their campaign's label set explicitly."
+                            ),
+                        },
                         **_SHARED_REC_PROPS,
                     },
                     "required": ["chunk_id", "action", "confidence", "rationale"],
@@ -560,6 +586,51 @@ def _chunk_flow_summary(chunks: list[dict]) -> list[str]:
             "  into fragments. These start a piece of their own without",
             "  being marked as a new chain: " + ", ".join(undeclared),
         ]
+
+    # Shared segments: a chunk whose predecessors come from more than one
+    # entry point. An exploit kit four campaigns enter is the legitimate
+    # case; a kit made the sole entry point with the campaigns hanging off
+    # it is the inversion this line makes visible.
+    fwd: dict[str, list[str]] = {cid: [] for cid in ids}
+    preds_of: dict[str, list[str]] = {cid: [] for cid in ids}
+    for c in chunks:
+        src = c.get("chunk_id", "")
+        if src not in id_set:
+            continue
+        for tgt in c.get("precedes_ids") or []:
+            if tgt in id_set:
+                fwd[src].append(tgt)
+                preds_of[tgt].append(src)
+    reach_from: dict[str, set[str]] = {cid: set() for cid in ids}
+    for root in roots:
+        stack, visited = [root], set()
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            reach_from[node].add(root)
+            stack.extend(n for n in fwd[node] if n not in visited)
+    shared = []
+    for cid in ids:
+        if len(preds_of[cid]) < 2:
+            continue
+        entry_roots: set[str] = set()
+        for p in preds_of[cid]:
+            entry_roots |= reach_from[p]
+        if len(entry_roots) >= 2:
+            shared.append(f"{cid} (entered from {', '.join(sorted(entry_roots))})")
+    if shared:
+        lines.append(
+            "  Shared segments — chunks several chains enter: " + "; ".join(shared)
+        )
+    warned = [c.get("chunk_id", "") for c in chunks if c.get("flow_warnings")]
+    if warned:
+        lines.append(
+            "  Tactic-order warnings (an edge runs from a later tactic to an "
+            "earlier one — the report's exposition order taken as attack "
+            "order?): " + ", ".join(warned)
+        )
     return lines
 
 
@@ -592,8 +663,15 @@ def _fmt_chunk(c: dict) -> list[str]:
     excerpt = (c.get("source_excerpt") or "").strip()
     if excerpt:
         lines.append(f'  cites: "{excerpt[:400]}"')
+    tactics = (c.get("context") or {}).get("tactics") or []
+    if isinstance(tactics, list) and tactics:
+        lines.append("  tactics: " + ", ".join(str(t) for t in tactics[:6]))
+    preds = [str(p) for p in (c.get("predecessor_indices") or [])]
+    lines.append("  after (#): " + (", ".join(preds) if preds else "(nothing — an entry point)"))
     succ = [s for s in (c.get("precedes_ids") or [])]
     lines.append("  precedes: " + (", ".join(succ) if succ else "(nothing)"))
+    for w in (c.get("flow_warnings") or [])[:4]:
+        lines.append(f"  FLOW WARNING: {str(w)[:200]}")
 
     artifacts = c.get("artifacts") or {}
     if isinstance(artifacts, dict) and artifacts:
@@ -676,6 +754,19 @@ def build_chunks_turn(state: dict) -> str:
         "covers two procedures, say so with reject/under_chunked rather than",
         "proposing to drop it and retype both halves from memory.",
         "",
+        "One shape to check for explicitly: a capability the report",
+        "describes once (an exploit kit, a loader chain, shared",
+        "infrastructure) that several campaigns or actors enter and then",
+        "continue from differently. The right decomposition is an hourglass:",
+        "each campaign's entry (its lure) is a chain root with the campaign's",
+        "label, ALL of them precede the shared capability's first chunk, the",
+        "capability's chunks carry their own label, and its last chunk",
+        "branches into the campaign tails. Vendors narrate the capability",
+        "first, so the chunker tends to make it the sole entry point with",
+        "the campaigns hanging off it. The fix is `edited_chain_root` /",
+        "`edited_chain_label` on the chunks concerned plus `edges` from each",
+        "entry into the capability and out of it — not a reject.",
+        "",
         "Not yours at this gate: the AND/OR/XOR branch operators and the",
         "attack-condition partitions. They are derived from the flow geometry",
         "your `edges` would change, so they are settled after you, not by you.",
@@ -693,9 +784,13 @@ def build_chunks_turn(state: dict) -> str:
             "The pipeline read this source as NON-SEQUENTIAL — a catalogue of",
             "procedures rather than one narrated intrusion. Disconnected",
             "chunks are the CORRECT output here, and the bundle will ship no",
-            "sequencing at all. Do not add edges to 'tidy up' the graph. If",
-            "that reading is wrong, say so in overall_notes: it is a",
-            "source-level call, not something an edge fixes.",
+            "flow edges unless the analyst flips that reading — which they",
+            "can do at this gate. If the report DOES narrate ordered chains",
+            "(one per campaign, say), say so plainly in overall_notes AND",
+            "still recommend the edges and chain roots the report supports:",
+            "the analyst flips the flag and applies them together.",
+            "Do not add edges merely to tidy up a graph the report leaves",
+            "unordered.",
         ]
     rationale = (state.get("sequentiality_rationale") or "").strip()
     if rationale:
